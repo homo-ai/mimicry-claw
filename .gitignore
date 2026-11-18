@@ -1,0 +1,62 @@
+# Build artifacts
+build/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+
+# Gradle
+.gradle/
+build/
+gradle/
+gradlew
+gradlew.bat
+*.gradle~
+*.gradle.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Kotlin
+*.kotlin_metadata
+*.kotlin_bin
+
+# JVM
+*.class
+*.jar
+*.jar
+
+# Logging
+*.log
+logs/
+log/
+
+# Environment
+.env
+.env.local
+.env.development
+.env.production
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db3
+
+# OS
+.DS_Store
+Thumbs.db
