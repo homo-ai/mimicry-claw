@@ -1,6 +1,7 @@
 package com.mimicryos.agent.tools
 
 import com.mimicryos.agent.core.*
+import com.mimicryos.agent.provider.*
 import java.util.concurrent.ConcurrentHashMap
 
 class ToolRegistry {
