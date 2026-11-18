@@ -18,6 +18,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.argument
 import com.github.ajalt.clikt.parameters.types.choice
 import com.mordant.terminal.Terminal
+import kotlinx.coroutines.runBlocking
 import java.io.File
 
 class ClaudeCodeCLI : CliktCommand(name = "claude-code-kotlin", help = "Claude Code Kotlin/JVM - AI Coding Agent") {
