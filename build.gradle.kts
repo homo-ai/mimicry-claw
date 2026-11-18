@@ -47,8 +47,6 @@ dependencies {
     implementation("io.github.microutils:kotlinx-logging:0.3.0")
     implementation("org.slf4j:slf4j-api:2.0.13")
     implementation("ch.qos.logback:logback-classic:1.5.10")
-    implementation("io.github.z4kn4:z4kn4:1.6.0")
-    implementation("com.fasterxml.uuid:java-uuid-generator:4.0.0")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
     testImplementation("io.mockk:mockk:1.13.13")
