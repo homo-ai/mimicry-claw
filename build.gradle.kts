@@ -19,14 +19,14 @@ kotlin {
     jvmToolchain(21)
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
-        freeCompilerArgs += "-Xcontext-receivers"
-        optIn += "kotlin.ExperimentalStdlibApi"
+        freeCompilerArgs.add("-Xcontext-receivers")
+        optIn.add("kotlin.ExperimentalStdlibApi")
     }
 }
 
 tasks.withType<KotlinCompilationTask<*>> {
     compilerOptions {
-        freeCompilerArgs += "-Xjsr305=strict"
+        freeCompilerArgs.add("-Xjsr305=strict")
     }
 }
 
