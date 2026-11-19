@@ -2,6 +2,10 @@ package com.mimicryos.agent.core
 
 import com.mimicryos.agent.provider.*
 import com.mimicryos.agent.permission.PermissionResult
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -87,7 +91,31 @@ class QueryEngine(val config: QueryEngineConfig) {
 
     private fun buildProtocolConfig(context: ToolUseContext): ProtocolConfig = ProtocolConfig(maxTokens = context.options.maxBudgetUsd?.let { (it * 1000).toInt() }, thinkingBudget = context.options.thinkingConfig.budgetTokens, timeoutMs = 120_000)
 
-    private suspend fun executeAPIRequest(request: APIRequest, provider: ModelProvider): APIResponse = APIResponse(200, emptyMap(), "")
+    private suspend fun executeAPIRequest(request: APIRequest, provider: ModelProvider): APIResponse {
+    return try {
+        val client = HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(30))
+            .build()
+
+        val builder = HttpRequest.newBuilder()
+            .uri(java.net.URI.create(request.url))
+            .timeout(java.time.Duration.ofMillis(request.timeoutMs))
+            .header("Content-Type", "application/json")
+
+        request.headers.forEach { (k, v) -> builder.header(k, v) }
+
+        val httpRequest = when (request.method.upperCase()) {
+            "POST" -> builder.POST(HttpRequest.BodyPublishers.ofString(request.body))
+            "GET" -> builder.GET()
+            else -> builder.POST(HttpRequest.BodyPublishers.ofString(request.body))
+        }
+
+        val response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString())
+        APIResponse(response.statusCode(), response.headers().map().mapValues { it.value.joinToString(",") }, response.body())
+    } catch (e: Exception) {
+        APIResponse(0, emptyMap(), "{\"error\":\"${e.message}\"}")
+    }
+}
 
     private fun buildAssistantMessage(apiMessage: APIMessage): Message.Assistant = Message.Assistant(uuid = generateUuid(), message = AssistantMessage("assistant", apiMessage.content.map { block -> when (block) { is APIContentBlock.Text -> ContentBlock.Text(block.text); is APIContentBlock.Thinking -> ContentBlock.Thinking(block.thinking, block.signature); is APIContentBlock.ToolUse -> ContentBlock.ToolUse(block.id, block.name, block.input); is APIContentBlock.ToolResult -> ContentBlock.ToolResult(block.toolUseId, block.content.map { when (it) { is APIResultContent.Text -> ResultContent.Text(it.text); is APIResultContent.Image -> ResultContent.Image(ImageSource("base64", it.mediaType, it.data)); else -> ResultContent.Text("") } }, block.isError); else -> ContentBlock.Text("") } }, usage = apiMessage.usage?.let { Usage(it.inputTokens, it.outputTokens, it.cacheCreationInputTokens, it.cacheReadInputTokens) }, stopReason = apiMessage.stopReason, model = apiMessage.model))
 
