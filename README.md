@@ -6,7 +6,7 @@ Multi-Model Software Engineering Agent — a Kotlin/JVM implementation of an AI 
 
 Mimicry Claw is an independent software engineering agent tool within the Mimicry ecosystem. It is built by migrating and refactoring a mature AI Coding Agent implementation to Kotlin/JVM, then extending it with multi-model, multi-provider, and multi-protocol support.
 
-**This is not** a Claude API client. It is a full agent runtime with tool calling, session management, skills, subagents, MCP integration, and permission control.
+**This is not** an API client. It is a full agent runtime with tool calling, session management, skills, subagents, MCP integration, and permission control.
 
 ## Features
 
