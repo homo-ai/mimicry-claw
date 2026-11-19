@@ -59,7 +59,7 @@ tasks.named<Jar>("fatJar") {
         attributes("Main-Class" to "com.mimicryos.agent.MainKt")
     }
     from(sourceSets.main.get().output)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it.files else it }) {
+    from(configurations.runtimeClasspath.get()) {
         exclude("META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.EC", "META-INF/versions/")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
