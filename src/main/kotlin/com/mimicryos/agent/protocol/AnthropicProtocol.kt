@@ -314,7 +314,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
     override fun getHeaders(provider: ModelProvider, config: ProtocolConfig): Map<String, String> {
         val h = mutableMapOf("Content-Type" to "application/json")
         when (provider.authConfig.type) {
-            AuthType.API_KEY -> provider.authConfig.apiKey?.let { put("x-goog-api-key", it) }
+            AuthType.API_KEY -> provider.authConfig.apiKey?.let { h["x-goog-api-key"] = it }
             else -> {}
         }
         return h
@@ -456,7 +456,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                     partObj["functionCall"]?.let { fc ->
                         val fcObj = fc.jsonObject
                         val name = fcObj["name"]?.jsonPrimitive?.content ?: ""
-                        val args = fcObj["args"]?.jsonObject?.mapValues { it.value } ?: emptyMap()
+                        val args = fcObj["args"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
                         events.add(APIEvent.ContentBlockStart(0, APIContentBlock.ToolUse("call_0", name, args)))
                     }
                 }
