@@ -10,7 +10,7 @@ import com.mimicryos.agent.hooks.HookManager
 import com.mimicryos.agent.mcp.MCPManager
 import com.mimicryos.agent.plan.PlanModeManager
 import com.mimicryos.agent.tools.ToolRegistry
-import com.mordant.terminal.Terminal
+import com.github.ajalt.mordant.terminal.Terminal
 import java.util.concurrent.ConcurrentHashMap
 
 class MimicryAgent(private val config: AgentConfig, private val registry: ModelRegistry, private val toolRegistry: ToolRegistry, private val permissionSystem: PermissionSystem, private val sessionManager: SessionManager, private val contextManager: ContextManager, private val skillManager: SkillManager, private val subagentManager: SubagentManager, private val hookManager: HookManager, private val mcpManager: MCPManager, private val planModeManager: PlanModeManager, private val terminal: Terminal? = null) {
