@@ -28,7 +28,7 @@ data class ModelCapabilities(val modelId: String, val maxContextTokens: Int, val
 
 interface Protocol {
     val type: ProtocolType
-    fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest
+    fun buildRequest(provider: ModelProvider, model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest
     fun parseResponse(response: APIResponse): List<APIEvent>
     fun parseStreamChunk(chunk: String): List<APIEvent>
     fun formatToolResult(toolUseId: String, result: ToolResultBlockParam): APIMessage
