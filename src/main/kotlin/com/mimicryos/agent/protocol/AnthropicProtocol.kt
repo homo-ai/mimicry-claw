@@ -192,7 +192,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
         if (response.statusCode != 200) {
-            return listOf(APIEvent.Error(APIError(response.statusCode, "HTTP ${response.statusCode}", response.body.substring(0, minOf(500, response.body.length)))))
+            return listOf(APIEvent.Error(APIError("http_error", "HTTP ${response.statusCode}", response.statusCode, response.body.substring(0, minOf(500, response.body.length)))))
         }
         return try {
             val obj = json.parseToJsonElement(response.body).jsonObject
@@ -203,30 +203,31 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
             val finishReason = choice["finishReason"]?.jsonPrimitive?.content
 
             val content = message?.get("content")?.jsonPrimitive?.content ?: ""
-            val toolCalls = message?.get("tool_calls")?.jsonArray?.mapNotNull { tc ->
+            val toolCalls: MutableList<QueryEngine.ToolCall> = mutableListOf()
+            message?.get("tool_calls")?.jsonArray?.forEach { tc ->
                 val tcObj = tc.jsonObject
                 val fn = tcObj["function"]?.jsonObject
-                ToolCall(
+                toolCalls.add(QueryEngine.ToolCall(
                     id = tcObj["id"]?.jsonPrimitive?.content ?: "",
                     name = fn?.get("name")?.jsonPrimitive?.content ?: "",
-                    input = fn?.get("input")?.jsonObject?.mapValues { it.value }
-                )
-            } ?: emptyList()
+                    input = fn?.get("input")?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+                ))
+            }
 
             val usage = obj["usage"]?.jsonObject
-            val inputTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-            val outputTokens = usage?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+            val inputTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+            val outputTokens = usage?.get("completion_tokens")?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
 
             val contentBlocks = mutableListOf<APIContentBlock>()
             if (content.isNotEmpty()) contentBlocks.add(APIContentBlock.Text(content))
             toolCalls.forEach { tc ->
-                contentBlocks.add(APIContentBlock.ToolUse(tc.id, tc.name, tc.input ?: emptyMap()))
+                contentBlocks.add(APIContentBlock.ToolUse(tc.id, tc.name, tc.input))
             }
 
             val apiMessage = APIMessage(
                 role = "assistant",
                 content = contentBlocks,
-                usage = APIUsage(inputTokens, outputTokens, 0, 0),
+                usage = APIUsage(inputTokens, outputTokens, 0L, 0L),
                 stopReason = finishReason,
                 model = obj["model"]?.jsonPrimitive?.content
             )
@@ -234,11 +235,11 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
             events.add(APIEvent.MessageStart(apiMessage))
             contentBlocks.forEachIndexed { i, _ -> events.add(APIEvent.ContentBlockStart(i, contentBlocks[i])) }
             contentBlocks.forEachIndexed { i, _ -> events.add(APIEvent.ContentBlockStop(i)) }
-            events.add(APIEvent.MessageDelta(APIDelta.StopReason(finishReason ?: "stop"), APIUsage(inputTokens, outputTokens, 0, 0)))
+            events.add(APIEvent.MessageDelta(APIDelta.StopReason(finishReason ?: "stop"), APIUsage(inputTokens, outputTokens, 0L, 0L)))
             events.add(APIEvent.MessageStop())
             events
         } catch (e: Exception) {
-            listOf(APIEvent.Error(APIError(0, "Parse error: ${e.message}", response.body.substring(0, minOf(500, response.body.length)))))
+            listOf(APIEvent.Error(APIError("parse_error", "Parse error: ${e.message}", 0, response.body.substring(0, minOf(500, response.body.length)))))
         }
     }
 
@@ -377,7 +378,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
         if (response.statusCode != 200) {
-            return listOf(APIEvent.Error(APIError(response.statusCode, "HTTP ${response.statusCode}", response.body.substring(0, minOf(500, response.body.length)))))
+            return listOf(APIEvent.Error(APIError("http_error", "HTTP ${response.statusCode}", response.statusCode, response.body.substring(0, minOf(500, response.body.length)))))
         }
         return try {
             val obj = json.parseToJsonElement(response.body).jsonObject
@@ -389,7 +390,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
             val finishReason = candidate["finishReason"]?.jsonPrimitive?.content
 
             val contentBlocks = mutableListOf<APIContentBlock>()
-            val toolCalls = mutableListOf<ToolCall>()
+            val toolCalls = mutableListOf<QueryEngine.ToolCall>()
 
             parts.forEach { part ->
                 val partObj = part.jsonObject
@@ -397,8 +398,8 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                 partObj["functionCall"]?.let { fc ->
                     val fcObj = fc.jsonObject
                     val name = fcObj["name"]?.jsonPrimitive?.content ?: ""
-                    val args = fcObj["args"]?.jsonObject?.mapValues { it.value } ?: emptyMap()
-                    toolCalls.add(ToolCall("call_${toolCalls.size}", name, args))
+                    val args = fcObj["args"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+                    toolCalls.add(QueryEngine.ToolCall("call_${toolCalls.size}", name, args))
                 }
             }
 
@@ -407,13 +408,13 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
             }
 
             val usage = obj["usageMetadata"]?.jsonObject
-            val inputTokens = usage?.get("promptTokenCount")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-            val outputTokens = usage?.get("candidatesTokenCount")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+            val inputTokens = usage?.get("promptTokenCount")?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+            val outputTokens = usage?.get("candidatesTokenCount")?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
 
             val apiMessage = APIMessage(
                 role = "assistant",
                 content = contentBlocks,
-                usage = APIUsage(inputTokens, outputTokens, 0, 0),
+                usage = APIUsage(inputTokens, outputTokens, 0L, 0L),
                 stopReason = finishReason,
                 model = obj["modelVersion"]?.jsonPrimitive?.content
             )
@@ -421,11 +422,11 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
             events.add(APIEvent.MessageStart(apiMessage))
             contentBlocks.forEachIndexed { i, _ -> events.add(APIEvent.ContentBlockStart(i, contentBlocks[i])) }
             contentBlocks.forEachIndexed { i, _ -> events.add(APIEvent.ContentBlockStop(i)) }
-            events.add(APIEvent.MessageDelta(APIDelta.StopReason(finishReason ?: "STOP"), APIUsage(inputTokens, outputTokens, 0, 0)))
+            events.add(APIEvent.MessageDelta(APIDelta.StopReason(finishReason ?: "STOP"), APIUsage(inputTokens, outputTokens, 0L, 0L)))
             events.add(APIEvent.MessageStop())
             events
         } catch (e: Exception) {
-            listOf(APIEvent.Error(APIError(0, "Parse error: ${e.message}", response.body.substring(0, minOf(500, response.body.length)))))
+            listOf(APIEvent.Error(APIError("parse_error", "Parse error: ${e.message}", 0, response.body.substring(0, minOf(500, response.body.length)))))
         }
     }
 
