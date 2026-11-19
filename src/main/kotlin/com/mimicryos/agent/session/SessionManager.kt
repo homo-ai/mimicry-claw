@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class SessionManager(private val baseDir: String) {
     private val sessions = ConcurrentHashMap<String, SessionData>()
-    private val sessionDir = File(baseDir, ".claude/sessions")
+    private val sessionDir = File(baseDir, ".mimicry/sessions")
     init { sessionDir.mkdirs() }
 
     fun createSession(): String { val id = java.util.UUID.randomUUID().toString(); sessions[id] = SessionData(id, System.currentTimeMillis(), mutableListOf()); return id }
