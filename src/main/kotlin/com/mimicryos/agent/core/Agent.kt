@@ -2,6 +2,7 @@ package com.mimicryos.agent.core
 
 import com.mimicryos.agent.provider.*
 import com.mimicryos.agent.permission.PermissionSystem
+import com.mimicryos.agent.permission.PermissionResult
 import com.mimicryos.agent.session.SessionManager
 import com.mimicryos.agent.context.ContextManager
 import com.mimicryos.agent.skills.SkillManager
