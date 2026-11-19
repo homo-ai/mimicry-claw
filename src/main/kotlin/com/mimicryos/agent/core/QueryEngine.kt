@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class QueryEngine(val config: QueryEngineConfig) {
     private var mutableMessages: MutableList<Message> = config.initialMessages.toMutableList()
-    private var abortController: AbortController = config.abortController
+    internal var abortController: AbortController = config.abortController
     private var permissionDenials: MutableList<PermissionDenial> = mutableListOf()
     private var totalUsage: APIUsage = APIUsage()
     private var discoveredSkillNames = ConcurrentHashMap.newKeySet<String>()
