@@ -26,14 +26,14 @@ class MimicryCLI : CliktCommand(name = "mimicry-claw") {
     private val prompt by argument(help = "Prompt to send to the agent")
     private val print by option("--print", "-p").flag()
     private val verbose by option("--verbose", "-v").flag()
-    private val model by option("--model", "-m", help = "Model to use").default("claude-sonnet-4-20250514")
+    private val model by option("--model", "-m", help = "Model to use")
     private val provider by option("--provider", help = "Provider to use").choice("anthropic", "openai", "google", "openai-zencode", "kimi", "xiaomi-mimo")
     private val apiKey by option("--api-key", help = "API key for the provider")
     private val baseUrl by option("--base-url", help = "Custom base URL")
-    private val cwd by option("--cwd", help = "Working directory").default(".")
-    private val maxTurns by option("--max-turns", help = "Maximum turns").int().default(50)
-    private val maxBudget by option("--max-budget", help = "Maximum budget in USD").long().default(100)
-    private val permissions by option("--permissions", help = "Permission mode").choice("default", "bypass", "auto", "plan", "accept-edits", "don't-ask").default("default")
+    private val cwd by option("--cwd", help = "Working directory")
+    private val maxTurns by option("--max-turns", help = "Maximum turns").int()
+    private val maxBudget by option("--max-budget", help = "Maximum budget in USD").long()
+    private val permissions by option("--permissions", help = "Permission mode").choice("default", "bypass", "auto", "plan", "accept-edits", "don't-ask")
     private val skillsDir by option("--skills-dir", help = "Skills directory")
     private val repl by option("--repl").flag()
 
@@ -43,7 +43,18 @@ class MimicryCLI : CliktCommand(name = "mimicry-claw") {
         terminal.println("║       Mimicry Claw - AI Coding Agent                   ║")
         terminal.println("╚══════════════════════════════════════════════════════════╝")
         terminal.println()
-        val config = AgentConfig(File(cwd).absolutePath, model, provider ?: "anthropic", apiKey ?: System.getenv("ANTHROPIC_API_KEY") ?: System.getenv("OPENAI_API_KEY"), baseUrl, permissions, maxTurns, maxBudget, skillsDir, verbose)
+        val config = AgentConfig(
+            cwd = File(cwd ?: ".").absolutePath,
+            model = model ?: "claude-sonnet-4-20250514",
+            providerId = provider ?: "anthropic",
+            apiKey = apiKey ?: System.getenv("ANTHROPIC_API_KEY") ?: System.getenv("OPENAI_API_KEY"),
+            baseUrl = baseUrl,
+            permissionMode = permissions ?: "default",
+            maxTurns = maxTurns ?: 50,
+            maxBudgetUsd = maxBudget ?: 100,
+            skillsDir = skillsDir,
+            verbose = verbose
+        )
         val agent = initializeAgent(config, terminal)
         if (repl || prompt == null) startREPL(agent, terminal) else { val result = agent.submit(prompt!!); terminal.println(result) }
     }
