@@ -104,10 +104,10 @@ class QueryEngine(val config: QueryEngineConfig) {
 
         request.headers.forEach { (k, v) -> builder.header(k, v) }
 
-        val httpRequest = when (request.method.upperCase()) {
-            "POST" -> builder.POST(HttpRequest.BodyPublishers.ofString(request.body))
-            "GET" -> builder.GET()
-            else -> builder.POST(HttpRequest.BodyPublishers.ofString(request.body))
+        val httpRequest = when (request.method.uppercase()) {
+            "POST" -> builder.POST(HttpRequest.BodyPublishers.ofString(request.body)).build()
+            "GET" -> builder.GET().build()
+            else -> builder.POST(HttpRequest.BodyPublishers.ofString(request.body)).build()
         }
 
         val response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString())
