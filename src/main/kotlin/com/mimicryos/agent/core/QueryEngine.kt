@@ -5,7 +5,7 @@ import com.mimicryos.agent.permission.PermissionResult
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-class QueryEngine(private val config: QueryEngineConfig) {
+class QueryEngine(val config: QueryEngineConfig) {
     private var mutableMessages: MutableList<Message> = config.initialMessages.toMutableList()
     private var abortController: AbortController = config.abortController
     private var permissionDenials: MutableList<PermissionDenial> = mutableListOf()
@@ -66,14 +66,14 @@ class QueryEngine(private val config: QueryEngineConfig) {
                             messages.add(Message.User(uuid = generateUuid(), message = UserMessage("user", Content.Text("")), toolUseResult = result.data as? ToolResultBlockParam))
                         }
                         is PermissionResult.Deny -> {
-                            toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text(permissionResult.message)), true))
+                            toolResults.add(ToolResultBlockParam(listOf(ResultContent.Text(permissionResult.message)), true))
                         }
                         is PermissionResult.Ask -> {
-                            toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text(permissionResult.message)), true))
+                            toolResults.add(ToolResultBlockParam(listOf(ResultContent.Text(permissionResult.message)), true))
                         }
                     }
                 } else {
-                    toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text("Tool not found: ${toolCall.name}")), true))
+                    toolResults.add(ToolResultBlockParam(listOf(ResultContent.Text("Tool not found: ${toolCall.name}")), true))
                 }
             }
             turnCount.incrementAndGet()
@@ -81,7 +81,7 @@ class QueryEngine(private val config: QueryEngineConfig) {
         return AgentLoopResult(messages, lastStopReason, totalUsage, turnCount.get(), toolResults)
     }
 
-    private fun buildAPIMessages(messages: List<Message>): List<APIMessage> = messages.map { msg -> when (msg) { is Message.User -> APIMessage("user", listOf(APIContentBlock.Text((msg.message.content as? Content.Text)?.text ?: ""))); is Message.Assistant -> APIMessage("assistant", msg.message.content.map { block -> when (block) { is ContentBlock.Text -> APIContentBlock.Text(block.text); is ContentBlock.Thinking -> APIContentBlock.Thinking(block.thinking, block.signature); is ContentBlock.ToolUse -> APIContentBlock.ToolUse(block.id, block.name, block.input); is ContentBlock.ToolResult -> APIContentBlock.ToolResult(block.toolUseId, block.content, block.isError); else -> APIContentBlock.Text("") } }); else -> APIMessage("user", listOf(APIContentBlock.Text(""))) } }
+    private fun buildAPIMessages(messages: List<Message>): List<APIMessage> = messages.map { msg -> when (msg) { is Message.User -> APIMessage("user", listOf(APIContentBlock.Text((msg.message.content as? Content.Text)?.text ?: ""))); is Message.Assistant -> APIMessage("assistant", msg.message.content.map { block -> when (block) { is ContentBlock.Text -> APIContentBlock.Text(block.text); is ContentBlock.Thinking -> APIContentBlock.Thinking(block.thinking, block.signature); is ContentBlock.ToolUse -> APIContentBlock.ToolUse(block.id, block.name, block.input); is ContentBlock.ToolResult -> APIContentBlock.ToolResult(block.toolUseId, block.content.map { when (it) { is ResultContent.Text -> APIResultContent.Text(it.text); is ResultContent.Image -> APIResultContent.Image(it.source.mediaType, it.source.data); is ResultContent.ToolUse -> APIResultContent.Text("") } }, block.isError); else -> APIContentBlock.Text("") } }); else -> APIMessage("user", listOf(APIContentBlock.Text(""))) } }
 
     private fun buildAPITools(tools: List<Tool<*, *>>): List<APITool> = tools.map { APITool(it.name, it.prompt(PromptOptions({ ToolPermissionContext() }, tools, emptyList())), mapOf("type" to "object", "properties" to (it.inputJSONSchema?.properties ?: emptyMap()))) }
 
@@ -89,7 +89,7 @@ class QueryEngine(private val config: QueryEngineConfig) {
 
     private suspend fun executeAPIRequest(request: APIRequest, provider: ModelProvider): APIResponse = APIResponse(200, emptyMap(), "")
 
-    private fun buildAssistantMessage(apiMessage: APIMessage): Message.Assistant = Message.Assistant(uuid = generateUuid(), message = AssistantMessage("assistant", apiMessage.content.map { block -> when (block) { is APIContentBlock.Text -> ContentBlock.Text(block.text); is APIContentBlock.Thinking -> ContentBlock.Thinking(block.thinking, block.signature); is APIContentBlock.ToolUse -> ContentBlock.ToolUse(block.id, block.name, block.input); is APIContentBlock.ToolResult -> ContentBlock.ToolResult(block.toolUseId, block.content, block.isError); else -> ContentBlock.Text("") } }, usage = apiMessage.usage, stopReason = apiMessage.stopReason, model = apiMessage.model))
+    private fun buildAssistantMessage(apiMessage: APIMessage): Message.Assistant = Message.Assistant(uuid = generateUuid(), message = AssistantMessage("assistant", apiMessage.content.map { block -> when (block) { is APIContentBlock.Text -> ContentBlock.Text(block.text); is APIContentBlock.Thinking -> ContentBlock.Thinking(block.thinking, block.signature); is APIContentBlock.ToolUse -> ContentBlock.ToolUse(block.id, block.name, block.input); is APIContentBlock.ToolResult -> ContentBlock.ToolResult(block.toolUseId, block.content.map { when (it) { is APIResultContent.Text -> ResultContent.Text(it.text); is APIResultContent.Image -> ResultContent.Image(ImageSource("base64", it.mediaType, it.data)); else -> ResultContent.Text("") } }, block.isError); else -> ContentBlock.Text("") } }, usage = apiMessage.usage?.let { Usage(it.inputTokens, it.outputTokens, it.cacheCreationInputTokens, it.cacheReadInputTokens) }, stopReason = apiMessage.stopReason, model = apiMessage.model))
 
     private fun extractToolCalls(message: Message.Assistant): List<ToolCall> = message.message.content.filterIsInstance<ContentBlock.ToolUse>().map { ToolCall(it.id, it.name, it.input) }
     private fun generateUuid(): String = java.util.UUID.randomUUID().toString()
