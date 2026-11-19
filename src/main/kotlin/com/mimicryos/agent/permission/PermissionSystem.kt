@@ -55,7 +55,7 @@ class PermissionSystem {
     companion object { val INSTANCE = PermissionSystem() }
 }
 
-enum class PermissionMode { DEFAULT, BYPASS, AUTO, PLAN, ACCEPT_EDITS, DON'T_KASK }
+enum class PermissionMode { DEFAULT, BYPASS, AUTO, PLAN, ACCEPT_EDITS, DONT_KASK }
 data class ToolPermissionRulesBySource(val user: List<String> = emptyList(), val project: List<String> = emptyList(), val local: List<String> = emptyList())
 object PermissionContextFactory {
     fun create(mode: String = "default", additionalWorkingDirectories: Map<String, AdditionalWorkingDirectory> = emptyMap(), alwaysAllowRules: ToolPermissionRules = ToolPermissionRules(), alwaysDenyRules: ToolPermissionRules = ToolPermissionRules(), alwaysAskRules: ToolPermissionRules = ToolPermissionRules(), isBypassPermissionsModeAvailable: Boolean = false, isAutoModeAvailable: Boolean = false): ToolPermissionContext = ToolPermissionContext(mode, additionalWorkingDirectories, alwaysAllowRules, alwaysDenyRules, alwaysAskRules, isBypassPermissionsModeAvailable, isAutoModeAvailable)
