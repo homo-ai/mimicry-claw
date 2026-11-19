@@ -79,7 +79,7 @@ data class FileHistoryState(val snapshots: Map<String, FileSnapshot> = emptyMap(
 data class FileSnapshot(val uuid: String, val timestamp: Long, val contentHash: String)
 data class AttributionState(val commits: List<AttributionCommit> = emptyList())
 data class AttributionCommit(val sha: String, val message: String, val author: String)
-data class DenialTrackingState(val count: Int = 0, val lastDenial: Long = 0)
+data class DenialTrackingState(var count: Int = 0, var lastDenial: Long = 0)
 data class ContentReplacementState(val decisions: Map<String, Boolean> = emptyMap())
 class FileStateCache { private val cache = ConcurrentHashMap<String, CachedFile>(); private val maxEntries = 100
     fun get(path: String): CachedFile? = cache[path]
