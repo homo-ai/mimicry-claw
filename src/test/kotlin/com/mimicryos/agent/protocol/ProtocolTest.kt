@@ -206,7 +206,7 @@ class ProtocolTest {
 
         assertEquals("POST", request.method)
         // assertTrue(request.headers["x-goog-api-key"] == "gemini-key")
-        assertTrue(request.body.contains("\"model\":\"gemini-1.5-pro\""))
+        assertTrue(request.url.contains("gemini-1.5-pro"))
         assertTrue(request.body.contains("\"role\":\"user\""))
         assertTrue(request.body.contains("\"functionDeclarations\""))
     }
