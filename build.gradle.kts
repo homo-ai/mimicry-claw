@@ -53,7 +53,7 @@ tasks.test {
 }
 
 // Build a fat JAR with all dependencies
-tasks.named<Jar>("fatJar") {
+tasks.register<Jar>("fatJar") {
     dependsOn("classes")
     manifest {
         attributes("Main-Class" to "com.mimicryos.agent.MainKt")
