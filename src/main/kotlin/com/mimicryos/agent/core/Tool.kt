@@ -1,6 +1,5 @@
 package com.mimicryos.agent.core
 
-import com.mimicryos.agent.provider.ToolPermissionContext
 import com.mimicryos.agent.permission.PermissionResult
 
 interface ToolInputSchema {
@@ -98,7 +97,7 @@ data class TerminalSize(val columns: Int, val rows: Int)
 data class ProgressMessage<P>(val type: String, val data: P)
 
 typealias Tools = List<Tool<*, *>>
-typealias CanUseToolFn = suspend CanUseToolFunction
+typealias CanUseToolFn = CanUseToolFunction
 
 interface CanUseToolFunction {
     suspend operator fun invoke(tool: Tool<*, *>, input: Map<String, Any>, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String? = null): PermissionResult
