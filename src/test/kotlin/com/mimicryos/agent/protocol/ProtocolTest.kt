@@ -12,10 +12,11 @@ class ProtocolTest {
     @Test
     fun `AnthropicProtocol builds valid request with API key auth`() {
         val protocol = AnthropicProtocol()
+        val provider = createProvider(ProviderType.ANTHROPIC, AuthType.API_KEY, "test-key")
         val messages = listOf(APIMessage("user", listOf(APIContentBlock.Text("Hello"))))
         val tools = listOf(APITool("bash", "Run bash", mapOf("type" to "object")))
 
-        val request = protocol.buildRequest("claude-3", messages, tools, "You are helpful", ProtocolConfig(maxTokens = 1024))
+        val request = protocol.buildRequest(provider, "claude-3", messages, tools, "You are helpful", ProtocolConfig(maxTokens = 1024))
 
         assertEquals("POST", request.method)
         assertTrue(request.headers["x-api-key"] == "test-key")
@@ -93,10 +94,11 @@ class ProtocolTest {
     @Test
     fun `OpenAIChatProtocol builds valid request with bearer auth`() {
         val protocol = OpenAIChatProtocol()
+        val provider = createProvider(ProviderType.OPENAI, AuthType.API_KEY, "sk-test")
         val messages = listOf(APIMessage("user", listOf(APIContentBlock.Text("Hi"))))
         val tools = listOf(APITool("bash", "Run bash", mapOf("type" to "object")))
 
-        val request = protocol.buildRequest("gpt-4o", messages, tools, "You are helpful", ProtocolConfig(maxTokens = 500))
+        val request = protocol.buildRequest(provider, "gpt-4o", messages, tools, "You are helpful", ProtocolConfig(maxTokens = 500))
 
         assertEquals("POST", request.method)
         assertTrue(request.headers["Authorization"] == "Bearer sk-test")
@@ -196,10 +198,11 @@ class ProtocolTest {
     @Test
     fun `GeminiProtocol builds valid request with API key`() {
         val protocol = GeminiProtocol()
+        val provider = createProvider(ProviderType.GOOGLE, AuthType.API_KEY, "gemini-key")
         val messages = listOf(APIMessage("user", listOf(APIContentBlock.Text("Hello"))))
         val tools = listOf(APITool("bash", "Run bash", mapOf("type" to "object")))
 
-        val request = protocol.buildRequest("gemini-1.5-pro", messages, tools, "You are helpful", ProtocolConfig(maxTokens = 1024))
+        val request = protocol.buildRequest(provider, "gemini-1.5-pro", messages, tools, "You are helpful", ProtocolConfig(maxTokens = 1024))
 
         assertEquals("POST", request.method)
         assertTrue(request.headers["x-goog-api-key"] == "gemini-key")
