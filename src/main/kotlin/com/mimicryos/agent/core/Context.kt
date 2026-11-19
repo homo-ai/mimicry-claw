@@ -1,6 +1,19 @@
 package com.mimicryos.agent.core
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+
+class AbortController {
+    private val _aborted = AtomicBoolean(false)
+    val isAborted: Boolean get() = _aborted.get()
+    fun abort() { _aborted.set(true) }
+    val signal: AbortSignal = AbortSignal(this)
+}
+
+class AbortSignal(private val controller: AbortController) {
+    val aborted: Boolean get() = controller.isAborted
+    fun addEventListener(type: String, listener: (Map<String, Any>) -> Unit) {}
+}
 
 data class ToolUseContext(
     val options: ToolOptions,
