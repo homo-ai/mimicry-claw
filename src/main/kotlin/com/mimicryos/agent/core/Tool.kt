@@ -1,6 +1,7 @@
 package com.mimicryos.agent.core
 
 import com.mimicryos.agent.provider.ToolPermissionContext
+import com.mimicryos.agent.permission.PermissionResult
 
 interface ToolInputSchema {
     val type: String get() = "object"
