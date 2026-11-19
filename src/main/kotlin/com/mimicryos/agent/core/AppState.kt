@@ -29,7 +29,7 @@ data class AppState(
     val coordinator: CoordinatorState = CoordinatorState(),
 )
 
-data class ToolPermissionContext(val mode: String = "default", val additionalWorkingDirectories: Map<String, AdditionalWorkingDirectory> = emptyMap(), val alwaysAllowRules: ToolPermissionRules = emptyMap(), val alwaysDenyRules: ToolPermissionRules = emptyMap(), val alwaysAskRules: ToolPermissionRules = emptyMap(), val isBypassPermissionsModeAvailable: Boolean = false, val isAutoModeAvailable: Boolean = false, val strippedDangerousRules: ToolPermissionRules = emptyMap(), val shouldAvoidPermissionPrompts: Boolean = false, val awaitAutomatedChecksBeforeDialog: Boolean = false, val prePlanMode: String? = null)
+data class ToolPermissionContext(val mode: String = "default", val additionalWorkingDirectories: Map<String, AdditionalWorkingDirectory> = emptyMap(), val alwaysAllowRules: ToolPermissionRules = ToolPermissionRules(), val alwaysDenyRules: ToolPermissionRules = ToolPermissionRules(), val alwaysAskRules: ToolPermissionRules = ToolPermissionRules(), val isBypassPermissionsModeAvailable: Boolean = false, val isAutoModeAvailable: Boolean = false, val strippedDangerousRules: ToolPermissionRules = ToolPermissionRules(), val shouldAvoidPermissionPrompts: Boolean = false, val awaitAutomatedChecksBeforeDialog: Boolean = false, val prePlanMode: String? = null)
 
 data class AdditionalWorkingDirectory(val path: String, val addedAt: Long = System.currentTimeMillis())
 data class ToolPermissionRules(val bash: List<String> = emptyList(), val read: List<String> = emptyList(), val write: List<String> = emptyList(), val edit: List<String> = emptyList(), val glob: List<String> = emptyList(), val grep: List<String> = emptyList(), val agent: List<String> = emptyList(), val mcp: Map<String, List<String>> = emptyMap())
@@ -42,7 +42,7 @@ data class Settings(val model: String? = null, val verbose: Boolean = false, val
 data class MemoryState(val memoryPath: String? = null, val autoMemory: Boolean = true, val content: String = "")
 data class PluginsState(val plugins: List<PluginInfo> = emptyList(), val enabled: List<String> = emptyList())
 data class PluginInfo(val name: String, val version: String, val path: String, val enabled: Boolean)
-data class SessionState(val sessionId: String, val createdAt: Long = System.currentTimeMillis(), val lastActiveAt: Long = System.currentTimeMillis(), val messageCount: Int = 0, val isPersistent: Boolean = true)
+data class SessionState(val sessionId: String = "", val createdAt: Long = System.currentTimeMillis(), val lastActiveAt: Long = System.currentTimeMillis(), val messageCount: Int = 0, val isPersistent: Boolean = true)
 data class VoiceState(val enabled: Boolean = false, val mode: String = "push_to_talk")
 data class PlanModeState(val active: Boolean = false, val planFilePath: String? = null, val planContent: String = "", val exitOnExit: Boolean = false)
 data class CoordinatorState(val mode: String = "disabled", val workers: List<WorkerInfo> = emptyList(), val activeTask: String? = null)
