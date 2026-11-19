@@ -31,7 +31,7 @@ class AnthropicProtocol(
             })
             put("system", systemPrompt)
             put("max_tokens", config.maxTokens ?: 4096)
-            put("stream", true)
+            // put("stream", true)  // streaming handled separately via parseStreamChunk
             config.temperature?.let { put("temperature", it) }
             config.topP?.let { put("top_p", it) }
             if (config.stopSequences.isNotEmpty()) put("stop_sequences", buildJsonArray { config.stopSequences.forEach { add(it) } })
