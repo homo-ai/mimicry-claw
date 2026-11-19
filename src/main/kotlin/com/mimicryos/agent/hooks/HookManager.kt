@@ -19,5 +19,5 @@ class HookManager {
 
 class HookEvent(val name: String)
 interface Hook { val name: String; val priority: Int get() = 0; suspend fun execute(context: HookContext): HookResult }
-sealed class HookResult { data class Continue(val context: HookContext) : HookResult(); data class Block(val reason: String, val context: HookContext) : HookResult(); data class Reject(val reason: String, val context: HookContext) : HookResult(); companion fun continueChain(context: HookContext = HookContext()) = Continue(context) }
+sealed class HookResult { data class Continue(val context: HookContext) : HookResult(); data class Block(val reason: String, val context: HookContext) : HookResult(); data class Reject(val reason: String, val context: HookContext) : HookResult(); companion object { fun continueChain(context: HookContext = HookContext()) = Continue(context) } }
 data class HookContext(val toolName: String? = null, val toolInput: Map<String, Any>? = null, val toolResult: Any? = null, val message: Message? = null, val sessionId: String? = null, val metadata: Map<String, Any> = emptyMap())
