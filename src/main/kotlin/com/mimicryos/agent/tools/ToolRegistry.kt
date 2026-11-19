@@ -38,7 +38,7 @@ object BashTool : Tool<BashInput, BashOutput> {
     override val name = "Bash"
     override val inputSchema = object : ToolInputSchema {}
     override val maxResultSizeChars = 80_000
-    override suspend fun call(args: BashInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BashOutput> = ToolResult(BashOutput("", 0, false))
+    override suspend fun call(args: BashInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BashOutput> = ToolResult(BashOutput("", exitCode = 0))
     override suspend fun description(input: BashInput, options: DescriptionOptions): String = "Execute a bash command"
     override fun mapToolResultToToolResultBlockParam(content: BashOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.stdout)))
     override fun prompt(options: PromptOptions): String = "Execute shell commands"
@@ -113,7 +113,7 @@ object GrepTool : Tool<GrepInput, GrepOutput> {
 object AgentTool : Tool<AgentInput, AgentOutput> {
     override val name = "Agent"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: AgentInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<AgentOutput> = ToolResult(AgentOutput("", "", emptyList()))
+    override suspend fun call(args: AgentInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<AgentOutput> = ToolResult(AgentOutput("", "", ""))
     override suspend fun description(input: AgentInput, options: DescriptionOptions): String = "Launch a subagent"
     override fun mapToolResultToToolResultBlockParam(content: AgentOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.result)))
     override fun prompt(options: PromptOptions): String = "Launch subagents for complex tasks"
