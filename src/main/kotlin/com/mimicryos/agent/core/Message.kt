@@ -2,6 +2,7 @@ package com.mimicryos.agent.core
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlin.system.currentTimeMillis
 
 @Serializable
 sealed class Message {
@@ -15,7 +16,7 @@ sealed class Message {
     data class User(
         override val uuid: String,
         val message: UserMessage,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -26,7 +27,7 @@ sealed class Message {
     data class Assistant(
         override val uuid: String,
         val message: AssistantMessage,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -42,7 +43,7 @@ sealed class Message {
         val retryAttempt: Int? = null,
         val maxRetries: Int? = null,
         val retryInMs: Long? = null,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -52,7 +53,7 @@ sealed class Message {
     data class Progress(
         override val uuid: String,
         val data: ToolProgressData,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -62,7 +63,7 @@ sealed class Message {
     data class Attachment(
         override val uuid: String,
         val attachment: AttachmentData,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -71,7 +72,7 @@ sealed class Message {
     @Serializable
     data class Tombstone(
         override val uuid: String,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -81,7 +82,7 @@ sealed class Message {
     data class StreamEvent(
         override val uuid: String,
         val event: StreamEventData,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
@@ -92,7 +93,7 @@ sealed class Message {
         override val uuid: String,
         val summary: String,
         val precedingToolUseIds: List<String>,
-        override val timestamp: Long = System.currentTimeMillis(),
+        override val timestamp: Long = currentTimeMillis(),
         override val isMeta: Boolean = false,
         override val isVisibleInTranscriptOnly: Boolean = false,
         override val parentToolUseId: String? = null,
