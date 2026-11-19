@@ -192,7 +192,7 @@ jobs:
 
   package-macos-x64:
     needs: build-jar
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Download JAR
