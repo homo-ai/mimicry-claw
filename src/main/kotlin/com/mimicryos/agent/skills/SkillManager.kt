@@ -10,7 +10,7 @@ class SkillManager(private val skillsDir: String) {
 
     init {
         loadFromDir(File(skillsDir))
-        loadFromDir(File(System.getProperty("user.home"), ".claude/skills"))
+        loadFromDir(File(System.getProperty("user.home"), ".mimicry/skills"))
         loadFromDir(File(skillsDir, "../commands"))
     }
 
