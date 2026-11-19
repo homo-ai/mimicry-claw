@@ -267,7 +267,7 @@ jobs:
   release:
     needs: [package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-macos-x64, package-macos-arm64]
     runs-on: macos-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: always()
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -305,6 +305,5 @@ jobs:
             - `mimicry-claw-linux-arm64.zip` — Linux ARM64 (Raspberry Pi 4/5, etc.)
             - `mimicry-claw-macos-x64.zip` — Intel-based Mac
             - `mimicry-claw-macos-arm64.zip` — Apple Silicon Mac (M1/M2/M3)
-          files: |
-            artifacts/*/*.zip
+          files: artifacts/*/*.zip
           make_latest: true
