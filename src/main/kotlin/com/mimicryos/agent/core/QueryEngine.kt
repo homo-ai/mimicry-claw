@@ -59,8 +59,10 @@ class QueryEngine(private val config: QueryEngineConfig) {
                     val permissionResult = canUseTool(tool, toolCall.input, toolUseContext, assistantMessage!!, toolCall.id)
                     when (permissionResult) {
                         is PermissionResult.Allow -> {
-                            val result = tool.call(toolCall.input, toolUseContext, canUseTool, assistantMessage!!)
-                            toolResults.add(tool.mapToolResultToToolResultBlockParam(result.data, toolCall.id))
+                            @Suppress("UNCHECKED_CAST")
+                            val typedTool = tool as Tool<Any, Any>
+                            val result = typedTool.call(toolCall.input, toolUseContext, canUseTool, assistantMessage!!)
+                            toolResults.add(typedTool.mapToolResultToToolResultBlockParam(result.data, toolCall.id))
                             messages.add(Message.User(uuid = generateUuid(), message = UserMessage("user", Content.Text("")), toolUseResult = result.data as? ToolResultBlockParam))
                         }
                         is PermissionResult.Deny -> {
