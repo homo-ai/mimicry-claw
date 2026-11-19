@@ -332,9 +332,8 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
 
     override fun getHeaders(provider: ModelProvider, config: ProtocolConfig): Map<String, String> {
         val h = mutableMapOf("Content-Type" to "application/json")
-        when (provider.authConfig.type) {
-            AuthType.API_KEY -> provider.authConfig.apiKey?.let { h["x-goog-api-key"] = it }
-            else -> {}
+        if (provider.authConfig.type == AuthType.API_KEY) {
+            provider.authConfig.apiKey?.let { h["x-goog-api-key"] = it }
         }
         return h
     }
@@ -420,7 +419,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                 partObj["functionCall"]?.let { fc ->
                     val fcObj = fc.jsonObject
                     val name = fcObj["name"]?.jsonPrimitive?.content ?: ""
-                    val args = fcObj["args"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+                    val args = fcObj["args"]?.jsonObject?.mapValues { if (it.value is JsonPrimitive) it.value.jsonPrimitive.content else it.value.toString() } ?: emptyMap()
                     toolCalls.add(QueryEngine.ToolCall("call_${toolCalls.size}", name, args))
                 }
             }
@@ -475,7 +474,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                     partObj["functionCall"]?.let { fc ->
                         val fcObj = fc.jsonObject
                         val name = fcObj["name"]?.jsonPrimitive?.content ?: ""
-                        val args = fcObj["args"]?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+                        val args = fcObj["args"]?.jsonObject?.mapValues { if (it.value is JsonPrimitive) it.value.jsonPrimitive.content else it.value.toString() } ?: emptyMap()
                         events.add(APIEvent.ContentBlockStart(0, APIContentBlock.ToolUse("call_0", name, args)))
                     }
                 }
