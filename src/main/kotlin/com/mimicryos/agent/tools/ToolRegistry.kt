@@ -38,7 +38,34 @@ object BashTool : Tool<BashInput, BashOutput> {
     override val name = "Bash"
     override val inputSchema = object : ToolInputSchema {}
     override val maxResultSizeChars = 80_000
-    override suspend fun call(args: BashInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BashOutput> = ToolResult(BashOutput("", exitCode = 0))
+    override suspend fun call(args: BashInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BashOutput> {
+        return try {
+            val timeoutMs = args.timeout?.toLong() ?: 60_000L
+            val process = ProcessBuilder(args.command.split(" "))
+                .directory(java.io.File(context.options.cwd))
+                .redirectErrorStream(false)
+                .start()
+
+            val stdout = java.util.concurrent.CompletableFuture.supplyAsync {
+                process.inputStream.bufferedReader().use { it.readText() }
+            }
+            val stderr = java.util.concurrent.CompletableFuture.supplyAsync {
+                process.errorStream.bufferedReader().use { it.readText() }
+            }
+
+            val completed = process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!completed) {
+                process.destroyForcibly()
+                ToolResult(BashOutput("", "Timeout after ${timeoutMs}ms", -1, true))
+            } else {
+                val out = stdout.get()
+                val err = stderr.get()
+                ToolResult(BashOutput(out, err, process.exitValue()))
+            }
+        } catch (e: Exception) {
+            ToolResult(BashOutput("", e.message ?: "Unknown error", -1, false))
+        }
+    }
     override suspend fun description(input: BashInput, options: DescriptionOptions): String = "Execute a bash command"
     override fun mapToolResultToToolResultBlockParam(content: BashOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.stdout)))
     override fun prompt(options: PromptOptions): String = "Execute shell commands"
