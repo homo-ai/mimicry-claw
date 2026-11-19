@@ -81,7 +81,7 @@ data class AttributionState(val commits: List<AttributionCommit> = emptyList())
 data class AttributionCommit(val sha: String, val message: String, val author: String)
 data class DenialTrackingState(val count: Int = 0, val lastDenial: Long = 0)
 data class ContentReplacementState(val decisions: Map<String, Boolean> = emptyMap())
-data class FileStateCache { private val cache = ConcurrentHashMap<String, CachedFile>(); private val maxEntries = 100
+class FileStateCache { private val cache = ConcurrentHashMap<String, CachedFile>(); private val maxEntries = 100
     fun get(path: String): CachedFile? = cache[path]
     fun put(path: String, content: CachedFile) { if (cache.size >= maxEntries) cache.keys.firstOrNull()?.let { cache.remove(it) }; cache[path] = content }
     fun has(path: String): Boolean = cache.containsKey(path)
