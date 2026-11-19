@@ -393,7 +393,9 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                 config.topP?.let { put("topP", it) }
             })
         }
-        return APIRequest(url = getEndpoint(provider, model), method = "POST", headers = getHeaders(provider, config), body = body.toString(), timeoutMs = config.timeoutMs)
+        val headers = getHeaders(provider, config).toMutableMap()
+        provider.authConfig.apiKey?.let { headers["x-goog-api-key"] = it }
+        return APIRequest(url = getEndpoint(provider, model), method = "POST", headers = headers, body = body.toString(), timeoutMs = config.timeoutMs)
     }
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
