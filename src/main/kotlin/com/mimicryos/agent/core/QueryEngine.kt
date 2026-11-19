@@ -37,7 +37,7 @@ class QueryEngine(val config: QueryEngineConfig) {
             val protocol = provider.getProtocol(provider.defaultProtocol)
             val protocolConfig = buildProtocolConfig(toolUseContext)
             val apiTools = buildAPITools(toolUseContext.options.tools)
-            val request = protocol.buildRequest(model, apiMessages, apiTools, systemPrompt, protocolConfig)
+            val request = protocol.buildRequest(provider, model, apiMessages, apiTools, systemPrompt, protocolConfig)
             val response = executeAPIRequest(request, provider)
             val events = protocol.parseResponse(response)
 
