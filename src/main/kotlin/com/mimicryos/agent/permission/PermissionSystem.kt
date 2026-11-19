@@ -33,12 +33,12 @@ class PermissionSystem {
 
     private fun isDeniedByRules(tool: Tool<*, *>, context: ToolPermissionContext): Boolean {
         val rules = context.alwaysDenyRules
-        return rules.bash.any { matchesPattern(tool.name, it) } || rules.read.any { matchesPattern(tool.name, it) } || rules.write.any { matchesPattern(tool.name, it) } || rules.edit.any { matchesPattern(tool.name, it) } || rules.glob.any { matchesPattern(tool.name, it) } || rules.grep.any { matchesPattern(tool.name, it) } || rules.agent.any { matchesPattern(tool.name, it) } || rules.mcp.values.any { matchesPattern(tool.name, it) }
+        return rules.bash.any { matchesPattern(tool.name, it) } || rules.read.any { matchesPattern(tool.name, it) } || rules.write.any { matchesPattern(tool.name, it) } || rules.edit.any { matchesPattern(tool.name, it) } || rules.glob.any { matchesPattern(tool.name, it) } || rules.grep.any { matchesPattern(tool.name, it) } || rules.agent.any { matchesPattern(tool.name, it) } || rules.mcp.values.flatMap { it }.any { matchesPattern(tool.name, it) }
     }
 
     private fun isAllowedByRules(tool: Tool<*, *>, context: ToolPermissionContext): Boolean {
         val rules = context.alwaysAllowRules
-        return rules.bash.any { matchesPattern(tool.name, it) } || rules.read.any { matchesPattern(tool.name, it) } || rules.write.any { matchesPattern(tool.name, it) } || rules.edit.any { matchesPattern(tool.name, it) } || rules.glob.any { matchesPattern(tool.name, it) } || rules.grep.any { matchesPattern(tool.name, it) } || rules.agent.any { matchesPattern(tool.name, it) } || rules.mcp.values.any { matchesPattern(tool.name, it) }
+        return rules.bash.any { matchesPattern(tool.name, it) } || rules.read.any { matchesPattern(tool.name, it) } || rules.write.any { matchesPattern(tool.name, it) } || rules.edit.any { matchesPattern(tool.name, it) } || rules.glob.any { matchesPattern(tool.name, it) } || rules.grep.any { matchesPattern(tool.name, it) } || rules.agent.any { matchesPattern(tool.name, it) } || rules.mcp.values.flatMap { it }.any { matchesPattern(tool.name, it) }
     }
 
     private fun matchesPattern(name: String, pattern: String): Boolean = when { pattern.endsWith("*") -> name.startsWith(pattern.dropLast(1)); pattern.contains("*") -> { val p = pattern.split("*"); p.size == 2 && name.startsWith(p[0]) && name.endsWith(p[1]) }; else -> name == pattern }
