@@ -1,12 +1,13 @@
 package com.mimicryos.agent.core
 
 import com.mimicryos.agent.provider.*
+import com.mimicryos.agent.permission.PermissionResult
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 class QueryEngine(private val config: QueryEngineConfig) {
     private var mutableMessages: MutableList<Message> = config.initialMessages.toMutableList()
-    private var abortController: AbortController = config.abortController ?: AbortController()
+    private var abortController: AbortController = config.abortController
     private var permissionDenials: MutableList<PermissionDenial> = mutableListOf()
     private var totalUsage: APIUsage = APIUsage()
     private var discoveredSkillNames = ConcurrentHashMap.newKeySet<String>()
@@ -25,7 +26,7 @@ class QueryEngine(private val config: QueryEngineConfig) {
         var lastStopReason: String? = null
         val toolResults = mutableListOf<ToolResultBlockParam>()
 
-        while (!abortController.isCancelled && turnCount.get() <= (config.maxTurns ?: Int.MAX_VALUE)) {
+        while (!abortController.isAborted && turnCount.get() <= (config.maxTurns ?: Int.MAX_VALUE)) {
             val apiMessages = buildAPIMessages(messages)
             val model = config.userSpecifiedModel ?: config.mainLoopModel
             val provider = config.registry.getProvider(config.providerId) ?: error("Provider not found: ${config.providerId}")
@@ -56,12 +57,18 @@ class QueryEngine(private val config: QueryEngineConfig) {
                 val tool = findToolByName(toolUseContext.options.tools, toolCall.name)
                 if (tool != null) {
                     val permissionResult = canUseTool(tool, toolCall.input, toolUseContext, assistantMessage!!, toolCall.id)
-                    if (permissionResult.behavior == "allow") {
-                        val result = tool.call(toolCall.input, toolUseContext, canUseTool, assistantMessage!!)
-                        toolResults.add(tool.mapToolResultToToolResultBlockParam(result.data, toolCall.id))
-                        messages.add(Message.User(uuid = generateUuid(), message = UserMessage("user", Content.Text("")), toolUseResult = result.data as? ToolResultBlockParam))
-                    } else {
-                        toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text(permissionResult.message ?: "Permission denied")), true))
+                    when (permissionResult) {
+                        is PermissionResult.Allow -> {
+                            val result = tool.call(toolCall.input, toolUseContext, canUseTool, assistantMessage!!)
+                            toolResults.add(tool.mapToolResultToToolResultBlockParam(result.data, toolCall.id))
+                            messages.add(Message.User(uuid = generateUuid(), message = UserMessage("user", Content.Text("")), toolUseResult = result.data as? ToolResultBlockParam))
+                        }
+                        is PermissionResult.Deny -> {
+                            toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text(permissionResult.message)), true))
+                        }
+                        is PermissionResult.Ask -> {
+                            toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text(permissionResult.message)), true))
+                        }
                     }
                 } else {
                     toolResults.add(ToolResultBlockParam(listOf(APIResultContent.Text("Tool not found: ${toolCall.name}")), true))
@@ -85,7 +92,7 @@ class QueryEngine(private val config: QueryEngineConfig) {
     private fun extractToolCalls(message: Message.Assistant): List<ToolCall> = message.message.content.filterIsInstance<ContentBlock.ToolUse>().map { ToolCall(it.id, it.name, it.input) }
     private fun generateUuid(): String = java.util.UUID.randomUUID().toString()
 
-    data class QueryEngineConfig(val sessionId: String, val cwd: String, val tools: List<Tool<*, *>>, val commands: List<Command> = emptyList(), val mcpClients: List<MCPServerConnection> = emptyList(), val agents: List<AgentDefinition> = emptyList(), val canUseTool: CanUseToolFn, val getAppState: () -> AppState, val setAppState: (f: (prev: AppState) -> AppState) -> Unit, val mainLoopModel: String, val providerId: String, val registry: ModelRegistry, val readFileCache: FileStateCache, val customSystemPrompt: String? = null, val appendSystemPrompt: String? = null, val userSpecifiedModel: String? = null, val fallbackModel: String? = null, val thinkingConfig: ThinkingConfig = ThinkingConfig(), val maxTurns: Int? = null, val maxBudgetUsd: Double? = null, val taskBudget: TaskBudget? = null, val verbose: Boolean = false, val handleElicitation: (suspend (String, ElicitRequestParams, AbortSignal) -> ElicitResult)? = null, val initialMessages: List<Message> = emptyList())
+    data class QueryEngineConfig(val sessionId: String, val cwd: String, val tools: List<Tool<*, *>>, val commands: List<Command> = emptyList(), val mcpClients: List<MCPServerConnection> = emptyList(), val agents: List<AgentDefinition> = emptyList(), val canUseTool: CanUseToolFn, val getAppState: () -> AppState, val setAppState: (f: (prev: AppState) -> AppState) -> Unit, val mainLoopModel: String, val providerId: String, val registry: ModelRegistry, val readFileCache: FileStateCache, val abortController: AbortController = AbortController(), val customSystemPrompt: String? = null, val appendSystemPrompt: String? = null, var userSpecifiedModel: String? = null, val fallbackModel: String? = null, val thinkingConfig: ThinkingConfig = ThinkingConfig(), val maxTurns: Int? = null, val maxBudgetUsd: Double? = null, val taskBudget: TaskBudget? = null, val verbose: Boolean = false, val handleElicitation: (suspend (String, ElicitRequestParams, AbortSignal) -> ElicitResult)? = null, val initialMessages: List<Message> = emptyList())
     data class SubmitOptions(val uuid: String? = null, val isMeta: Boolean = false, val replayUserMessages: Boolean = false, val includePartialMessages: Boolean = false)
     data class TaskBudget(val total: Int)
     data class AgentLoopResult(val messages: List<Message>, val lastStopReason: String?, val totalUsage: APIUsage, val turnCount: Int, val toolResults: List<ToolResultBlockParam>)
