@@ -76,7 +76,7 @@ class AnthropicProtocol(
         try {
             val obj = json.parseToJsonElement(response.body).jsonObject
             obj["content"]?.jsonArray?.forEach { block -> val b = block.jsonObject; when (b["type"]?.jsonPrimitive?.content) { "text" -> { events.add(APIEvent.ContentBlockStart(0, APIContentBlock.Text(b["text"]?.jsonPrimitive?.content ?: ""))); events.add(APIEvent.ContentBlockStop(0)) }; "tool_use" -> { val input = b["input"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap(); events.add(APIEvent.ContentBlockStart(0, APIContentBlock.ToolUse(b["id"]?.jsonPrimitive?.content ?: "", b["name"]?.jsonPrimitive?.content ?: "", input))); events.add(APIEvent.ContentBlockStop(0)) }; "thinking" -> { events.add(APIEvent.ContentBlockStart(0, APIContentBlock.Thinking(b["thinking"]?.jsonPrimitive?.content ?: "", b["signature"]?.jsonPrimitive?.content))); events.add(APIEvent.ContentBlockStop(0)) } } }
-            obj["stop_reason"]?.let { events.add(APIEvent.MessageDelta(APIDelta.StopReason(it.jsonPrimitive.content))) }
+            obj["stop_reason"]?.let { events.add(APIEvent.MessageDelta(APIDelta.StopReason(it.jsonPrimitive.content), null)) }
             obj["usage"]?.let { u -> val us = u.jsonObject; events.add(APIEvent.Usage(APIUsage(us["input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, us["output_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, us["cache_creation_input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, us["cache_read_input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0))) }
             events.add(APIEvent.MessageStop())
         } catch (e: Exception) { events.add(APIEvent.Error(APIError("parse_error", "Failed to parse: ${e.message}", null, false))) }
