@@ -46,7 +46,7 @@ sealed class APIEvent {
     data class ContentBlockDelta(val index: Int, val delta: APIDelta) : APIEvent()
     data class ContentBlockStop(val index: Int) : APIEvent()
     data class MessageDelta(val delta: APIDelta, val usage: APIUsage?) : APIEvent()
-    data class MessageStop : APIEvent()
+    class MessageStop : APIEvent()
     data class Error(val error: APIError) : APIEvent()
     data class Usage(val usage: APIUsage) : APIEvent()
 }
