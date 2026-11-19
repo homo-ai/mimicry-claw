@@ -393,7 +393,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                 config.topP?.let { put("topP", it) }
             })
         }
-        val headers = getHeaders(provider, config).toMutableMap()
+        val headers = mutableMapOf("Content-Type" to "application/json")
         provider.authConfig.apiKey?.let { headers["x-goog-api-key"] = it }
         return APIRequest(url = getEndpoint(provider, model), method = "POST", headers = headers, body = body.toString(), timeoutMs = config.timeoutMs)
     }
