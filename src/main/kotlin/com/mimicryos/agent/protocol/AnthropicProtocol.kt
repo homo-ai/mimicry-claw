@@ -27,7 +27,7 @@ class AnthropicProtocol(
         val body = buildJsonObject {
             put("model", model)
             put("messages", buildJsonArray {
-                messages.forEach { msg -> add(buildJsonObject { put("role", msg.role); put("content", buildJsonArray { msg.content.forEach { block -> when (block) { is APIContentBlock.Text -> add(buildJsonObject { put("type", "text"); put("text", block.text) }); is APIContentBlock.Thinking -> add(buildJsonObject { put("type", "thinking"); put("thinking", block.thinking); block.signature?.let { put("signature", it) } }); is APIContentBlock.ToolUse -> add(buildJsonObject { put("type", "tool_use"); put("id", block.id); put("name", block.name); put("input", buildJsonObject { block.input.forEach { (k, v) -> put(k, v) } }) }); is APIContentBlock.ToolResult -> add(buildJsonObject { put("type", "tool_result"); put("tool_use_id", block.toolUseId); put("content", buildJsonArray { block.content.forEach { when (it) { is APIResultContent.Text -> add(buildJsonObject { put("type", "text"); put("text", it.text) }); is APIResultContent.Image -> add(buildJsonObject { put("type", "image"); put("source", buildJsonObject { put("type", "base64"); put("media_type", it.mediaType); put("data", it.data) }) }) } } }); put("is_error", block.isError) }); else -> add(buildJsonObject { put("type", "text"); put("text", "") }) } } }) }) })
+                messages.forEach { msg -> add(buildApiMessage(msg)) }
             })
             put("system", systemPrompt)
             put("max_tokens", config.maxTokens ?: 4096)
@@ -35,10 +35,39 @@ class AnthropicProtocol(
             config.temperature?.let { put("temperature", it) }
             config.topP?.let { put("top_p", it) }
             if (config.stopSequences.isNotEmpty()) put("stop_sequences", buildJsonArray { config.stopSequences.forEach { add(it) } })
-            if (tools.isNotEmpty()) put("tools", buildJsonArray { tools.forEach { tool -> add(buildJsonObject { put("name", tool.name); put("description", tool.description); put("input_schema", buildJsonObject { tool.inputSchema.forEach { (k, v) -> put(k, when (v) { is String -> JsonPrimitive(v); is Number -> JsonPrimitive(v); is Boolean -> JsonPrimitive(v); is Map<*, *> -> buildJsonObject { v.forEach { (k2, v2) -> put(k2.toString(), JsonPrimitive(v2.toString())) } }; else -> JsonPrimitive(v.toString()) }) } }) }) } })
+            if (tools.isNotEmpty()) put("tools", buildJsonArray { tools.forEach { tool -> add(buildJsonObject { put("name", tool.name); put("description", tool.description); put("input_schema", buildJsonObject { tool.inputSchema.forEach { (k, v) -> put(k, anyToJsonElement(v)) } }) }) } })
             if (config.thinkingBudget != null) put("thinking", buildJsonObject { put("type", "enabled"); put("budget_tokens", config.thinkingBudget) })
         }
         return APIRequest(url = getEndpoint(emptyProvider(), model), method = "POST", headers = getHeaders(emptyProvider(), config), body = body.toString(), timeoutMs = config.timeoutMs)
+    }
+
+    private fun buildApiMessage(msg: APIMessage): JsonObject = buildJsonObject {
+        put("role", msg.role)
+        put("content", buildJsonArray {
+            msg.content.forEach { block -> add(buildApiContentBlock(block)) }
+        })
+    }
+
+    private fun buildApiContentBlock(block: APIContentBlock): JsonObject = when (block) {
+        is APIContentBlock.Text -> buildJsonObject { put("type", "text"); put("text", block.text) }
+        is APIContentBlock.Thinking -> buildJsonObject { put("type", "thinking"); put("thinking", block.thinking); block.signature?.let { put("signature", it) } }
+        is APIContentBlock.ToolUse -> buildJsonObject { put("type", "tool_use"); put("id", block.id); put("name", block.name); put("input", buildJsonObject { block.input.forEach { (k, v) -> put(k, v) } }) }
+        is APIContentBlock.ToolResult -> buildJsonObject { put("type", "tool_result"); put("tool_use_id", block.toolUseId); put("content", buildJsonArray { block.content.forEach { add(buildApiResultContent(it)) } }); put("is_error", block.isError) }
+        is APIContentBlock.Image -> buildJsonObject { put("type", "image"); put("source", buildJsonObject { put("type", "base64"); put("media_type", block.mediaType); put("data", block.data) }) }
+    }
+
+    private fun buildApiResultContent(content: APIResultContent): JsonObject = when (content) {
+        is APIResultContent.Text -> buildJsonObject { put("type", "text"); put("text", content.text) }
+        is APIResultContent.Image -> buildJsonObject { put("type", "image"); put("source", buildJsonObject { put("type", "base64"); put("media_type", content.mediaType); put("data", content.data) }) }
+    }
+
+    private fun anyToJsonElement(value: Any): JsonElement = when (value) {
+        is String -> JsonPrimitive(value)
+        is Number -> JsonPrimitive(value)
+        is Boolean -> JsonPrimitive(value)
+        is Map<*, *> -> buildJsonObject { value.forEach { (k, v) -> put(k.toString(), anyToJsonElement(v!!)) } }
+        is List<*> -> buildJsonArray { value.forEach { add(anyToJsonElement(it!!)) } }
+        else -> JsonPrimitive(value.toString())
     }
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
@@ -63,7 +92,7 @@ class AnthropicProtocol(
         return events
     }
 
-    override fun formatToolResult(toolUseId: String, result: ToolResultBlockParam): APIMessage = APIMessage("user", listOf(APIContentBlock.ToolResult(toolUseId, result.content, result.isError)))
+    override fun formatToolResult(toolUseId: String, result: ToolResultBlockParam): APIMessage = APIMessage("user", listOf(APIContentBlock.ToolResult(toolUseId, result.content.map { when (it) { is ResultContent.Text -> APIResultContent.Text(it.text); is ResultContent.Image -> APIResultContent.Image(it.source.mediaType, it.source.data); is ResultContent.ToolUse -> APIResultContent.Text("") } }, result.isError)))
 
     private fun emptyProvider(): ModelProvider = object : ModelProvider {
         override val id = ""; override val name = ""; override val type = ProviderType.ANTHROPIC
@@ -86,10 +115,10 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
         when (provider.authConfig.type) { AuthType.API_KEY -> provider.authConfig.apiKey?.let { h["Authorization"] = "Bearer $it" }; AuthType.BEARER_TOKEN, AuthType.OAUTH2 -> provider.authConfig.accessToken?.let { h["Authorization"] = "Bearer $it" }; else -> {} }
         return h
     }
-    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest = APIRequest(url = getEndpoint(emptyProvider(), model), body = "{}")
+    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest = APIRequest(url = getEndpoint(emptyProvider(), model), headers = emptyMap(), body = "{}")
     override fun parseResponse(response: APIResponse): List<APIEvent> = emptyList()
     override fun parseStreamChunk(chunk: String): List<APIEvent> = emptyList()
-    override fun formatToolResult(toolUseId: String, result: ToolResultBlockParam): APIMessage = APIMessage("tool", listOf(APIContentBlock.ToolResult(toolUseId, result.content, result.isError)))
+    override fun formatToolResult(toolUseId: String, result: ToolResultBlockParam): APIMessage = APIMessage("tool", listOf(APIContentBlock.ToolResult(toolUseId, result.content.map { when (it) { is ResultContent.Text -> APIResultContent.Text(it.text); is ResultContent.Image -> APIResultContent.Image(it.source.mediaType, it.source.data); is ResultContent.ToolUse -> APIResultContent.Text("") } }, result.isError)))
     private fun emptyProvider(): ModelProvider = object : ModelProvider {
         override val id = ""; override val name = ""; override val type = ProviderType.OPENAI
         override val authConfig = AuthConfig(type = AuthType.NONE)
@@ -107,7 +136,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
     override val type: ProtocolType = ProtocolType.GOOGLE_GEMINI
     override fun getEndpoint(provider: ModelProvider, model: String): String = "$baseUrl/models/$model:generateContent"
     override fun getHeaders(provider: ModelProvider, config: ProtocolConfig): Map<String, String> = mutableMapOf("Content-Type" to "application/json").apply { when (provider.authConfig.type) { AuthType.API_KEY -> provider.authConfig.apiKey?.let { put("x-goog-api-key", it) }; else -> {} } }
-    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest = APIRequest(url = getEndpoint(emptyProvider(), model), body = "{}")
+    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest = APIRequest(url = getEndpoint(emptyProvider(), model), headers = emptyMap(), body = "{}")
     override fun parseResponse(response: APIResponse): List<APIEvent> = emptyList()
     override fun parseStreamChunk(chunk: String): List<APIEvent> = emptyList()
     override fun formatToolResult(toolUseId: String, result: ToolResultBlockParam): APIMessage = APIMessage("user", emptyList())
