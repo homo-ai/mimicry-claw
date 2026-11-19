@@ -229,7 +229,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
                 toolCalls.add(QueryEngine.ToolCall(
                     id = tcObj["id"]?.jsonPrimitive?.content ?: "",
                     name = fn?.get("name")?.jsonPrimitive?.content ?: "",
-                    input = fn?.get("arguments")?.jsonPrimitive?.content?.let { argsStr -> try { json.parseToJsonElement(argsStr).jsonObject?.mapValues { it.value.toString() } ?: emptyMap() } catch (e: Exception) { emptyMap() } } ?: emptyMap()
+                    input = fn?.get("arguments")?.jsonPrimitive?.content?.let { argsStr -> try { json.parseToJsonElement(argsStr).jsonObject?.mapValues { if (it.value is JsonPrimitive) it.value.jsonPrimitive.content else it.value.toString() } ?: emptyMap() } catch (e: Exception) { emptyMap() } } ?: emptyMap()
                 ))
             }
 
@@ -332,9 +332,8 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
 
     override fun getHeaders(provider: ModelProvider, config: ProtocolConfig): Map<String, String> {
         val h = mutableMapOf("Content-Type" to "application/json")
-        if (provider.authConfig.type == AuthType.API_KEY) {
-            provider.authConfig.apiKey?.let { h["x-goog-api-key"] = it }
-        }
+        val apiKey = provider.authConfig.apiKey
+        if (apiKey != null) h["x-goog-api-key"] = apiKey
         return h
     }
 
