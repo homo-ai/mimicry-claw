@@ -33,7 +33,7 @@ class AnthropicProtocol(
         return headers
     }
 
-    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest {
+    override fun buildRequest(provider: ModelProvider, model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest {
         val body = buildJsonObject {
             put("model", model)
             put("messages", buildJsonArray {
@@ -48,7 +48,7 @@ class AnthropicProtocol(
             if (tools.isNotEmpty()) put("tools", buildJsonArray { tools.forEach { tool -> add(buildJsonObject { put("name", tool.name); put("description", tool.description); put("input_schema", buildJsonObject { tool.inputSchema.forEach { (k, v) -> put(k, anyToJsonElement(v)) } }) }) } })
             if (config.thinkingBudget != null) put("thinking", buildJsonObject { put("type", "enabled"); put("budget_tokens", config.thinkingBudget) })
         }
-        return APIRequest(url = getEndpoint(emptyProvider(), model), method = "POST", headers = getHeaders(emptyProvider(), config), body = body.toString(), timeoutMs = config.timeoutMs)
+        return APIRequest(url = getEndpoint(provider, model), method = "POST", headers = getHeaders(provider, config), body = body.toString(), timeoutMs = config.timeoutMs)
     }
 
     private fun buildApiMessage(msg: APIMessage): JsonObject = buildJsonObject {
@@ -78,9 +78,28 @@ class AnthropicProtocol(
         val events = mutableListOf<APIEvent>()
         try {
             val obj = json.parseToJsonElement(response.body).jsonObject
-            obj["content"]?.jsonArray?.forEach { block -> val b = block.jsonObject; when (b["type"]?.jsonPrimitive?.content) { "text" -> { events.add(APIEvent.ContentBlockStart(0, APIContentBlock.Text(b["text"]?.jsonPrimitive?.content ?: ""))); events.add(APIEvent.ContentBlockStop(0)) }; "tool_use" -> { val input = b["input"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap(); events.add(APIEvent.ContentBlockStart(0, APIContentBlock.ToolUse(b["id"]?.jsonPrimitive?.content ?: "", b["name"]?.jsonPrimitive?.content ?: "", input))); events.add(APIEvent.ContentBlockStop(0)) }; "thinking" -> { events.add(APIEvent.ContentBlockStart(0, APIContentBlock.Thinking(b["thinking"]?.jsonPrimitive?.content ?: "", b["signature"]?.jsonPrimitive?.content))); events.add(APIEvent.ContentBlockStop(0)) } } }
-            obj["stop_reason"]?.let { events.add(APIEvent.MessageDelta(APIDelta.StopReason(it.jsonPrimitive.content), null)) }
-            obj["usage"]?.let { u -> val us = u.jsonObject; events.add(APIEvent.Usage(APIUsage(us["input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, us["output_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, us["cache_creation_input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, us["cache_read_input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0))) }
+            val contentBlocks = mutableListOf<APIContentBlock>()
+            obj["content"]?.jsonArray?.forEach { block ->
+                val b = block.jsonObject
+                when (b["type"]?.jsonPrimitive?.content) {
+                    "text" -> contentBlocks.add(APIContentBlock.Text(b["text"]?.jsonPrimitive?.content ?: ""))
+                    "tool_use" -> {
+                        val input = b["input"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap()
+                        contentBlocks.add(APIContentBlock.ToolUse(b["id"]?.jsonPrimitive?.content ?: "", b["name"]?.jsonPrimitive?.content ?: "", input))
+                    }
+                    "thinking" -> contentBlocks.add(APIContentBlock.Thinking(b["thinking"]?.jsonPrimitive?.content ?: "", b["signature"]?.jsonPrimitive?.content))
+                }
+            }
+            val usage = obj["usage"]?.jsonObject?.let { u ->
+                APIUsage(u["input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, u["output_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, u["cache_creation_input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0, u["cache_read_input_tokens"]?.jsonPrimitive?.content?.toLong() ?: 0)
+            }
+            val stopReason = obj["stop_reason"]?.jsonPrimitive?.content
+            val apiMessage = APIMessage(obj["role"]?.jsonPrimitive?.content ?: "assistant", contentBlocks, usage = usage, stopReason = stopReason, model = obj["model"]?.jsonPrimitive?.content)
+            events.add(APIEvent.MessageStart(apiMessage))
+            contentBlocks.forEachIndexed { i, _ -> events.add(APIEvent.ContentBlockStart(i, contentBlocks[i])) }
+            contentBlocks.forEachIndexed { i, _ -> events.add(APIEvent.ContentBlockStop(i)) }
+            stopReason?.let { events.add(APIEvent.MessageDelta(APIDelta.StopReason(it), usage)) }
+            usage?.let { events.add(APIEvent.Usage(it)) }
             events.add(APIEvent.MessageStop())
         } catch (e: Exception) { events.add(APIEvent.Error(APIError("parse_error", "Failed to parse: ${e.message}", null, false))) }
         return events
@@ -126,7 +145,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
         return h
     }
 
-    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest {
+    override fun buildRequest(provider: ModelProvider, model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest {
         val body = buildJsonObject {
             put("model", model)
             put("messages", buildJsonArray {
@@ -149,7 +168,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
             config.temperature?.let { put("temperature", it) }
             config.topP?.let { put("top_p", it) }
         }
-        return APIRequest(url = getEndpoint(emptyProvider(), model), method = "POST", headers = getHeaders(emptyProvider(), config), body = body.toString(), timeoutMs = config.timeoutMs)
+        return APIRequest(url = getEndpoint(provider, model), method = "POST", headers = getHeaders(provider, config), body = body.toString(), timeoutMs = config.timeoutMs)
     }
 
     private fun buildApiMessage(msg: APIMessage): JsonObject = buildJsonObject {
@@ -210,7 +229,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
                 toolCalls.add(QueryEngine.ToolCall(
                     id = tcObj["id"]?.jsonPrimitive?.content ?: "",
                     name = fn?.get("name")?.jsonPrimitive?.content ?: "",
-                    input = fn?.get("input")?.jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+                    input = fn?.get("arguments")?.jsonPrimitive?.content?.let { argsStr -> try { json.parseToJsonElement(argsStr).jsonObject?.mapValues { it.value.toString() } ?: emptyMap() } catch (e: Exception) { emptyMap() } } ?: emptyMap()
                 ))
             }
 
@@ -320,7 +339,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
         return h
     }
 
-    override fun buildRequest(model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest {
+    override fun buildRequest(provider: ModelProvider, model: String, messages: List<APIMessage>, tools: List<APITool>, systemPrompt: String, config: ProtocolConfig): APIRequest {
         val body = buildJsonObject {
             put("contents", buildJsonArray {
                 messages.forEach { msg ->
@@ -376,7 +395,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
                 config.topP?.let { put("topP", it) }
             })
         }
-        return APIRequest(url = getEndpoint(emptyProvider(), model), method = "POST", headers = getHeaders(emptyProvider(), config), body = body.toString(), timeoutMs = config.timeoutMs)
+        return APIRequest(url = getEndpoint(provider, model), method = "POST", headers = getHeaders(provider, config), body = body.toString(), timeoutMs = config.timeoutMs)
     }
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
