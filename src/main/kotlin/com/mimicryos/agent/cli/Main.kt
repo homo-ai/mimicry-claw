@@ -13,33 +13,33 @@ import com.mimicryos.agent.hooks.HookManager
 import com.mimicryos.agent.mcp.MCPManager
 import com.mimicryos.agent.plan.PlanModeManager
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.flag
-import com.github.ajalt.clikt.parameters.argument
-import com.github.ajalt.clikt.parameters.types.choice
-import com.mordant.terminal.Terminal
+import com.github.ajalt.clikt.parameters.types.*
+import com.github.ajalt.mordant.terminal.Terminal
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
-class ClaudeCodeCLI : CliktCommand(name = "claude-code-kotlin", help = "Claude Code Kotlin/JVM - AI Coding Agent") {
+class MimicryCLI : CliktCommand(name = "mimicry-claw") {
     private val prompt by argument(help = "Prompt to send to the agent").optional()
     private val print by flag("--print", "-p", help = "Print mode (non-interactive)")
     private val verbose by flag("--verbose", "-v", help = "Verbose output")
-    private val model by option("--model", "-m", help = "Model to use").default("claude-sonnet-4-20250514")
+    private val model by option("--model", "-m", help = "Model to use").defaultValue("claude-sonnet-4-20250514")
     private val provider by option("--provider", help = "Provider to use").choice("anthropic", "openai", "google", "openai-zencode", "kimi", "xiaomi-mimo")
     private val apiKey by option("--api-key", help = "API key for the provider")
     private val baseUrl by option("--base-url", help = "Custom base URL")
-    private val cwd by option("--cwd", help = "Working directory").default(".")
-    private val maxTurns by option("--max-turns", help = "Maximum turns").int().default(50)
-    private val maxBudget by option("--max-budget", help = "Maximum budget in USD").long().default(100)
-    private val permissions by option("--permissions", help = "Permission mode").choice("default", "bypass", "auto", "plan", "accept-edits", "don't-ask").default("default")
+    private val cwd by option("--cwd", help = "Working directory").defaultValue(".")
+    private val maxTurns by option("--max-turns", help = "Maximum turns").int().defaultValue(50)
+    private val maxBudget by option("--max-budget", help = "Maximum budget in USD").long().defaultValue(100)
+    private val permissions by option("--permissions", help = "Permission mode").choice("default", "bypass", "auto", "plan", "accept-edits", "don't-ask").defaultValue("default")
     private val skillsDir by option("--skills-dir", help = "Skills directory")
     private val repl by flag("--repl", help = "Start REPL mode")
 
     override fun run() = runBlocking {
         val terminal = Terminal()
         terminal.println("╔══════════════════════════════════════════════════════════╗")
-        terminal.println("║       Claude Code Kotlin/JVM - AI Coding Agent         ║")
+        terminal.println("║       Mimicry Claw - AI Coding Agent                   ║")
         terminal.println("╚══════════════════════════════════════════════════════════╝")
         terminal.println()
         val config = AgentConfig(File(cwd).absolutePath, model, provider ?: "anthropic", apiKey ?: System.getenv("ANTHROPIC_API_KEY") ?: System.getenv("OPENAI_API_KEY"), baseUrl, permissions, maxTurns, maxBudget, skillsDir, verbose)
@@ -47,7 +47,7 @@ class ClaudeCodeCLI : CliktCommand(name = "claude-code-kotlin", help = "Claude C
         if (repl || prompt == null) startREPL(agent, terminal) else { val result = agent.submit(prompt!!); terminal.println(result) }
     }
 
-    private suspend fun initializeAgent(config: AgentConfig, terminal: Terminal): ClaudeCodeAgent {
+    private suspend fun initializeAgent(config: AgentConfig, terminal: Terminal): MimicryAgent {
         val registry = ModelRegistry()
         registry.registerProvider(createAnthropicProvider(config))
         registry.registerProvider(createOpenAIProvider(config))
@@ -56,12 +56,12 @@ class ClaudeCodeCLI : CliktCommand(name = "claude-code-kotlin", help = "Claude C
         val permissionSystem = PermissionSystem.INSTANCE
         val sessionManager = SessionManager(config.cwd)
         val contextManager = ContextManager(config.cwd)
-        val skillManager = SkillManager(config.skillsDir ?: "${config.cwd}/.claude/skills")
+        val skillManager = SkillManager(config.skillsDir ?: "${config.cwd}/.mimicry/skills")
         val subagentManager = SubagentManager(registry, toolRegistry)
         val hookManager = HookManager()
         val mcpManager = MCPManager()
         val planModeManager = PlanModeManager()
-        return ClaudeCodeAgent(config, registry, toolRegistry, permissionSystem, sessionManager, contextManager, skillManager, subagentManager, hookManager, mcpManager, planModeManager, terminal)
+        return MimicryAgent(config, registry, toolRegistry, permissionSystem, sessionManager, contextManager, skillManager, subagentManager, hookManager, mcpManager, planModeManager, terminal)
     }
 
     private fun createAnthropicProvider(config: AgentConfig): ModelProvider = object : ModelProvider {
@@ -70,7 +70,7 @@ class ClaudeCodeCLI : CliktCommand(name = "claude-code-kotlin", help = "Claude C
         override val supportedProtocols = listOf(ProtocolType.ANTHROPIC_MESSAGES)
         override val defaultProtocol: ProtocolType = ProtocolType.ANTHROPIC_MESSAGES
         override fun getProtocol(type: ProtocolType): Protocol = AnthropicProtocol(baseUrl = config.baseUrl ?: "https://api.anthropic.com")
-        override suspend fun listModels(): List<ModelInfo> = listOf(ModelInfo("claude-sonnet-4-20250514", "Claude Sonnet 4", "anthropic", contextWindow = 200_000, maxOutputTokens = 64_000, supportsToolCalling = true, supportsThinking = true, supportsVision = true, supportsStructuredOutput = true))
+        override suspend fun listModels(): List<ModelInfo> = listOf(ModelInfo("claude-sonnet-4-20250514", "Sonnet 4", "anthropic", contextWindow = 200_000, maxOutputTokens = 64_000, supportsToolCalling = true, supportsThinking = true, supportsVision = true, supportsStructuredOutput = true))
         override suspend fun getModelCapabilities(modelId: String): ModelCapabilities? = null
         override fun validate(): ValidationResult = if (config.apiKey != null) ValidationResult(true) else ValidationResult.failure("API key required")
         override suspend fun refreshAuth(): AuthResult = AuthResult(true)
@@ -100,7 +100,7 @@ class ClaudeCodeCLI : CliktCommand(name = "claude-code-kotlin", help = "Claude C
         override suspend fun refreshAuth(): AuthResult = AuthResult(true)
     }
 
-    private suspend fun startREPL(agent: ClaudeCodeAgent, terminal: Terminal) {
+    private suspend fun startREPL(agent: MimicryAgent, terminal: Terminal) {
         terminal.println("Type your prompt (or 'exit' to quit):"); terminal.println()
         while (true) { terminal.print("> "); val input = readLine() ?: break; if (input.equals("exit", ignoreCase = true)) break; if (input.isEmpty()) continue
             try { val result = agent.submit(input); terminal.println(result) } catch (e: Exception) { terminal.println("Error: ${e.message}") }; terminal.println() }

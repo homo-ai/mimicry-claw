@@ -13,7 +13,7 @@ import com.mimicryos.agent.tools.ToolRegistry
 import com.mordant.terminal.Terminal
 import java.util.concurrent.ConcurrentHashMap
 
-class ClaudeCodeAgent(private val config: AgentConfig, private val registry: ModelRegistry, private val toolRegistry: ToolRegistry, private val permissionSystem: PermissionSystem, private val sessionManager: SessionManager, private val contextManager: ContextManager, private val skillManager: SkillManager, private val subagentManager: SubagentManager, private val hookManager: HookManager, private val mcpManager: MCPManager, private val planModeManager: PlanModeManager, private val terminal: Terminal? = null) {
+class MimicryAgent(private val config: AgentConfig, private val registry: ModelRegistry, private val toolRegistry: ToolRegistry, private val permissionSystem: PermissionSystem, private val sessionManager: SessionManager, private val contextManager: ContextManager, private val skillManager: SkillManager, private val subagentManager: SubagentManager, private val hookManager: HookManager, private val mcpManager: MCPManager, private val planModeManager: PlanModeManager, private val terminal: Terminal? = null) {
     private val messages = mutableListOf<Message>()
     private val fileStateCache = FileStateCache()
     private var currentSessionId: String = sessionManager.createSession()
@@ -42,7 +42,7 @@ class ClaudeCodeAgent(private val config: AgentConfig, private val registry: Mod
 
     private fun buildSystemPrompt(): String {
         val sb = StringBuilder()
-        sb.append("You are Claude, an AI coding assistant.\n")
+        sb.append("You are an AI coding assistant.\n")
         sb.append("Working directory: ${config.cwd}\n")
         val skillPrompt = skillManager.buildPrompt()
         if (skillPrompt.isNotEmpty()) { sb.append("\n## Skills\n\n"); sb.append(skillPrompt) }
