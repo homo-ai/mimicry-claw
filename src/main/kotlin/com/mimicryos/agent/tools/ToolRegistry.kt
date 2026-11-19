@@ -42,7 +42,7 @@ object BashTool : Tool<BashInput, BashOutput> {
         return try {
             val timeoutMs = args.timeout?.toLong() ?: 60_000L
             val process = ProcessBuilder(args.command.split(" "))
-                .directory(java.io.File(context.options.cwd))
+                .directory(java.io.File(System.getProperty("user.dir")))
                 .redirectErrorStream(false)
                 .start()
 
