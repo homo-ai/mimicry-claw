@@ -77,7 +77,27 @@ object FileReadTool : Tool<FileReadInput, FileReadOutput> {
     override val name = "Read"
     override val inputSchema = object : ToolInputSchema {}
     override val maxResultSizeChars = Int.MAX_VALUE
-    override suspend fun call(args: FileReadInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileReadOutput> = ToolResult(FileReadOutput("", emptyList()))
+    override suspend fun call(args: FileReadInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileReadOutput> {
+        return try {
+            val file = java.io.File(args.file_path)
+            if (!file.exists()) {
+                return ToolResult(FileReadOutput("Error: File not found: ${args.file_path}"))
+            }
+            if (!file.isFile) {
+                return ToolResult(FileReadOutput("Error: Not a file: ${args.file_path}"))
+            }
+            val content = file.readText()
+            val lines = content.lines()
+            val startLine = (args.offset ?: 1).coerceAtLeast(1)
+            val endLine = args.limit?.let { startLine + it - 1 } ?: lines.size
+            val selectedLines = lines.drop(startLine - 1).take(endLine - startLine + 1)
+            val numbered = selectedLines.mapIndexed { i, line -> "${startLine + i}: $line" }
+            val result = numbered.joinToString("\n")
+            ToolResult(FileReadOutput(result, numbered))
+        } catch (e: Exception) {
+            ToolResult(FileReadOutput("Error reading file: ${e.message}"))
+        }
+    }
     override suspend fun description(input: FileReadInput, options: DescriptionOptions): String = "Read a file"
     override fun mapToolResultToToolResultBlockParam(content: FileReadOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.content)))
     override fun prompt(options: PromptOptions): String = "Read files from the filesystem"
@@ -90,7 +110,16 @@ object FileReadTool : Tool<FileReadInput, FileReadOutput> {
 object FileWriteTool : Tool<FileWriteInput, FileWriteOutput> {
     override val name = "Write"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: FileWriteInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileWriteOutput> = ToolResult(FileWriteOutput(true))
+    override suspend fun call(args: FileWriteInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileWriteOutput> {
+        return try {
+            val file = java.io.File(args.file_path)
+            file.parentFile?.mkdirs()
+            file.writeText(args.content)
+            ToolResult(FileWriteOutput(true))
+        } catch (e: Exception) {
+            ToolResult(FileWriteOutput(false))
+        }
+    }
     override suspend fun description(input: FileWriteInput, options: DescriptionOptions): String = "Write a file"
     override fun mapToolResultToToolResultBlockParam(content: FileWriteOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text("File written")))
     override fun prompt(options: PromptOptions): String = "Write files to the filesystem"
@@ -102,7 +131,28 @@ object FileWriteTool : Tool<FileWriteInput, FileWriteOutput> {
 object FileEditTool : Tool<FileEditInput, FileEditOutput> {
     override val name = "Edit"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: FileEditInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileEditOutput> = ToolResult(FileEditOutput(true, emptyList()))
+    override suspend fun call(args: FileEditInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileEditOutput> {
+        return try {
+            val file = java.io.File(args.file_path)
+            if (!file.exists()) {
+                return ToolResult(FileEditOutput(false, listOf("Error: File not found: ${args.file_path}")))
+            }
+            val content = file.readText()
+            if (!content.contains(args.old_string)) {
+                return ToolResult(FileEditOutput(false, listOf("Error: old_string not found in file")))
+            }
+            val newContent = if (args.replace_all) {
+                content.replace(args.old_string, args.new_string)
+            } else {
+                content.replaceFirst(args.old_string, args.new_string)
+            }
+            file.writeText(newContent)
+            val diffs = listOf("Replaced in ${args.file_path}")
+            ToolResult(FileEditOutput(true, diffs))
+        } catch (e: Exception) {
+            ToolResult(FileEditOutput(false, listOf("Error: ${e.message}")))
+        }
+    }
     override suspend fun description(input: FileEditInput, options: DescriptionOptions): String = "Edit a file"
     override fun mapToolResultToToolResultBlockParam(content: FileEditOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text("File edited")))
     override fun prompt(options: PromptOptions): String = "Edit files"
@@ -114,7 +164,26 @@ object FileEditTool : Tool<FileEditInput, FileEditOutput> {
 object GlobTool : Tool<GlobInput, GlobOutput> {
     override val name = "Glob"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: GlobInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<GlobOutput> = ToolResult(GlobOutput(emptyList()))
+    override suspend fun call(args: GlobInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<GlobOutput> {
+        return try {
+            val baseDir = java.io.File(args.path)
+            if (!baseDir.exists() || !baseDir.isDirectory) {
+                return ToolResult(GlobOutput(emptyList()))
+            }
+            val pattern = args.pattern
+            val results = mutableListOf<String>()
+            val regex = globToRegex(pattern)
+            baseDir.walkTopDown().filter { it.isFile }.forEach { file ->
+                val relPath = file.relativeTo(baseDir).path
+                if (regex.matches(relPath)) {
+                    results.add(file.absolutePath)
+                }
+            }
+            ToolResult(GlobOutput(results.sorted()))
+        } catch (e: Exception) {
+            ToolResult(GlobOutput(emptyList()))
+        }
+    }
     override suspend fun description(input: GlobInput, options: DescriptionOptions): String = "Find files by pattern"
     override fun mapToolResultToToolResultBlockParam(content: GlobOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.files.joinToString("\n"))))
     override fun prompt(options: PromptOptions): String = "Find files by glob pattern"
@@ -122,12 +191,43 @@ object GlobTool : Tool<GlobInput, GlobOutput> {
     override fun toAutoClassifierInput(input: GlobInput): Any = input.pattern
     override fun isConcurrencySafe(input: GlobInput): Boolean = true
     override fun isReadOnly(input: GlobInput): Boolean = true
+    private fun globToRegex(pattern: String): Regex {
+        val escaped = Regex.escape(pattern)
+            .replace("\\*\\*", "§DOUBLESTAR§")
+            .replace("\\*", "[^/]*")
+            .replace("§DOUBLESTAR§", ".*")
+            .replace("\\?", ".")
+        return Regex("^$escaped$")
+    }
 }
 
 object GrepTool : Tool<GrepInput, GrepOutput> {
     override val name = "Grep"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: GrepInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<GrepOutput> = ToolResult(GrepOutput(emptyList()))
+    override suspend fun call(args: GrepInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<GrepOutput> {
+        return try {
+            val regex = try { Regex(args.pattern) } catch (e: Exception) { return ToolResult(GrepOutput(emptyList())) }
+            val baseDir = java.io.File(args.path)
+            if (!baseDir.exists() || !baseDir.isDirectory) {
+                return ToolResult(GrepOutput(emptyList()))
+            }
+            val matches = mutableListOf<String>()
+            val includeRegex = args.include?.let { Regex(it) }
+            baseDir.walkTopDown().filter { it.isFile }.forEach { file ->
+                if (includeRegex != null && !includeRegex.matches(file.name)) return@forEach
+                try {
+                    file.readLines().forEachIndexed { lineNum, line ->
+                        if (regex.containsMatchIn(line)) {
+                            matches.add("${file.absolutePath}:${lineNum + 1}:${line.trim()}")
+                        }
+                    }
+                } catch (e: Exception) { /* skip binary files */ }
+            }
+            ToolResult(GrepOutput(matches))
+        } catch (e: Exception) {
+            ToolResult(GrepOutput(emptyList()))
+        }
+    }
     override suspend fun description(input: GrepInput, options: DescriptionOptions): String = "Search for a pattern"
     override fun mapToolResultToToolResultBlockParam(content: GrepOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.matches.joinToString("\n"))))
     override fun prompt(options: PromptOptions): String = "Search for patterns in files"
