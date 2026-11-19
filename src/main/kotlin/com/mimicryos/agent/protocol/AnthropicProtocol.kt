@@ -192,7 +192,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
         if (response.statusCode != 200) {
-            return listOf(APIEvent.Error(APIError("http_error", "HTTP ${response.statusCode}", response.statusCode, response.body.substring(0, minOf(500, response.body.length)))))
+            return listOf(APIEvent.Error(APIError("http_error", "HTTP ${response.statusCode}", response.statusCode, false)))
         }
         return try {
             val obj = json.parseToJsonElement(response.body).jsonObject
@@ -239,7 +239,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
             events.add(APIEvent.MessageStop())
             events
         } catch (e: Exception) {
-            listOf(APIEvent.Error(APIError("parse_error", "Parse error: ${e.message}", 0, response.body.substring(0, minOf(500, response.body.length)))))
+            listOf(APIEvent.Error(APIError("parse_error", "Parse error: ${e.message}", 0, false)))
         }
     }
 
@@ -261,17 +261,20 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
                 val delta = choice["delta"]?.jsonObject
                 val finishReason = choice["finishReason"]?.jsonPrimitive?.content
                 val content = delta?.get("content")?.jsonPrimitive?.content
-                val toolCalls = delta?.get("tool_calls")?.jsonArray?.mapNotNull { tc ->
+                val toolCalls: MutableList<QueryEngine.ToolCall> = mutableListOf()
+                delta?.get("tool_calls")?.jsonArray?.forEach { tc ->
                     val tcObj = tc.jsonObject
                     val fn = tcObj["function"]?.jsonObject
-                    ToolCall(
+                    val argsStr = fn?.get("arguments")?.jsonPrimitive?.content ?: "{}"
+                    val argsMap = try {
+                        json.parseToJsonElement(argsStr).jsonObject?.mapValues { it.value.toString() } ?: emptyMap()
+                    } catch (e: Exception) { emptyMap() }
+                    toolCalls.add(QueryEngine.ToolCall(
                         id = tcObj["id"]?.jsonPrimitive?.content ?: "",
                         name = fn?.get("name")?.jsonPrimitive?.content ?: "",
-                        input = fn?.get("arguments")?.jsonPrimitive?.content?.let {
-                            try { json.parseToJsonElement(it).jsonObject?.mapValues { v -> v.value } } catch (e: Exception) { emptyMap() }
-                        } ?: emptyMap()
-                    )
-                } ?: emptyList()
+                        input = argsMap
+                    ))
+                }
 
                 if (content != null && content.isNotEmpty()) {
                     events.add(APIEvent.ContentBlockDelta(0, APIDelta.TextDelta(content)))
@@ -378,7 +381,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
 
     override fun parseResponse(response: APIResponse): List<APIEvent> {
         if (response.statusCode != 200) {
-            return listOf(APIEvent.Error(APIError("http_error", "HTTP ${response.statusCode}", response.statusCode, response.body.substring(0, minOf(500, response.body.length)))))
+            return listOf(APIEvent.Error(APIError("http_error", "HTTP ${response.statusCode}", response.statusCode, false)))
         }
         return try {
             val obj = json.parseToJsonElement(response.body).jsonObject
@@ -426,7 +429,7 @@ class GeminiProtocol(private val baseUrl: String = "https://generativelanguage.g
             events.add(APIEvent.MessageStop())
             events
         } catch (e: Exception) {
-            listOf(APIEvent.Error(APIError("parse_error", "Parse error: ${e.message}", 0, response.body.substring(0, minOf(500, response.body.length)))))
+            listOf(APIEvent.Error(APIError("parse_error", "Parse error: ${e.message}", 0, false)))
         }
     }
 
