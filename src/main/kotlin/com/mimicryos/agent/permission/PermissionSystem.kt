@@ -2,6 +2,18 @@ package com.mimicryos.agent.permission
 
 import com.mimicryos.agent.core.*
 
+sealed class PermissionResult {
+    data class Allow(val input: Map<String, Any>? = null) : PermissionResult()
+    data class Deny(val message: String, val code: String? = null) : PermissionResult()
+    data class Ask(val message: String, val code: String? = null) : PermissionResult()
+
+    companion object {
+        fun allow(input: Map<String, Any>? = null) = Allow(input)
+        fun deny(message: String, code: String? = null) = Deny(message, code)
+        fun ask(message: String, code: String? = null) = Ask(message, code)
+    }
+}
+
 class PermissionSystem {
     private val denialTracking = DenialTrackingState()
 
