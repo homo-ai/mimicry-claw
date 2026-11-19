@@ -32,13 +32,13 @@ class PermissionSystem {
     }
 
     private fun isDeniedByRules(tool: Tool<*, *>, context: ToolPermissionContext): Boolean {
-        for ((_, patterns) in context.alwaysDenyRules.entries) { for (pattern in patterns) { if (matchesPattern(tool.name, pattern)) return true } }
-        return false
+        val rules = context.alwaysDenyRules
+        return rules.bash.any { matchesPattern(tool.name, it) } || rules.read.any { matchesPattern(tool.name, it) } || rules.write.any { matchesPattern(tool.name, it) } || rules.edit.any { matchesPattern(tool.name, it) } || rules.glob.any { matchesPattern(tool.name, it) } || rules.grep.any { matchesPattern(tool.name, it) } || rules.agent.any { matchesPattern(tool.name, it) } || rules.mcp.values.any { matchesPattern(tool.name, it) }
     }
 
     private fun isAllowedByRules(tool: Tool<*, *>, context: ToolPermissionContext): Boolean {
-        for ((_, patterns) in context.alwaysAllowRules.entries) { for (pattern in patterns) { if (matchesPattern(tool.name, pattern)) return true } }
-        return false
+        val rules = context.alwaysAllowRules
+        return rules.bash.any { matchesPattern(tool.name, it) } || rules.read.any { matchesPattern(tool.name, it) } || rules.write.any { matchesPattern(tool.name, it) } || rules.edit.any { matchesPattern(tool.name, it) } || rules.glob.any { matchesPattern(tool.name, it) } || rules.grep.any { matchesPattern(tool.name, it) } || rules.agent.any { matchesPattern(tool.name, it) } || rules.mcp.values.any { matchesPattern(tool.name, it) }
     }
 
     private fun matchesPattern(name: String, pattern: String): Boolean = when { pattern.endsWith("*") -> name.startsWith(pattern.dropLast(1)); pattern.contains("*") -> { val p = pattern.split("*"); p.size == 2 && name.startsWith(p[0]) && name.endsWith(p[1]) }; else -> name == pattern }
@@ -58,9 +58,9 @@ class PermissionSystem {
 enum class PermissionMode { DEFAULT, BYPASS, AUTO, PLAN, ACCEPT_EDITS, DON'T_KASK }
 data class ToolPermissionRulesBySource(val user: List<String> = emptyList(), val project: List<String> = emptyList(), val local: List<String> = emptyList())
 object PermissionContextFactory {
-    fun create(mode: String = "default", additionalWorkingDirectories: Map<String, AdditionalWorkingDirectory> = emptyMap(), alwaysAllowRules: ToolPermissionRules = emptyMap(), alwaysDenyRules: ToolPermissionRules = emptyMap(), alwaysAskRules: ToolPermissionRules = emptyMap(), isBypassPermissionsModeAvailable: Boolean = false, isAutoModeAvailable: Boolean = false): ToolPermissionContext = ToolPermissionContext(mode, additionalWorkingDirectories, alwaysAllowRules, alwaysDenyRules, alwaysAskRules, isBypassPermissionsModeAvailable, isAutoModeAvailable)
+    fun create(mode: String = "default", additionalWorkingDirectories: Map<String, AdditionalWorkingDirectory> = emptyMap(), alwaysAllowRules: ToolPermissionRules = ToolPermissionRules(), alwaysDenyRules: ToolPermissionRules = ToolPermissionRules(), alwaysAskRules: ToolPermissionRules = ToolPermissionRules(), isBypassPermissionsModeAvailable: Boolean = false, isAutoModeAvailable: Boolean = false): ToolPermissionContext = ToolPermissionContext(mode, additionalWorkingDirectories, alwaysAllowRules, alwaysDenyRules, alwaysAskRules, isBypassPermissionsModeAvailable, isAutoModeAvailable)
     fun default(): ToolPermissionContext = create()
     fun bypass(): ToolPermissionContext = create("bypass", isBypassPermissionsModeAvailable = true)
     fun acceptEdits(): ToolPermissionContext = create("accept_edits", alwaysAllowRules = ToolPermissionRules(edit = listOf("*"), write = listOf("*")))
-    fun plan(): ToolPermissionContext = create("plan")
+    fun plan(): ToolPermissionContext = create()
 }
