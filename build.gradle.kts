@@ -6,6 +6,7 @@ plugins {
     kotlin("plugin.serialization") version "2.1.20"
     application
     `maven-publish`
+    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "com.mimicry"
@@ -56,4 +57,10 @@ tasks.withType<Jar> {
     manifest {
         attributes("Main-Class" to "com.mimicryos.agent.MainKt")
     }
+}
+
+tasks.named<com.github.johnrengelman.shadow.tasks.ShadowJar>("shadowJar") {
+    archiveClassifier.set("")
+    mergeServiceFiles()
+    exclude("META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.SF")
 }
