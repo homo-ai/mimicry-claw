@@ -118,5 +118,3 @@ class MimicryCLI : CliktCommand(name = "mimicry-claw") {
             try { val result = agent.submit(input); terminal.println(result) } catch (e: Exception) { terminal.println("Error: ${e.message}") }; terminal.println() }
     }
 }
-
-data class AgentConfig(val cwd: String, val model: String, val providerId: String, val apiKey: String? = null, val baseUrl: String? = null, val permissionMode: String = "default", val maxTurns: Int = 50, val maxBudgetUsd: Long = 100, val skillsDir: String? = null, val verbose: Boolean = false)
