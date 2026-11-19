@@ -16,7 +16,7 @@ class SkillManager(private val skillsDir: String) {
 
     private fun loadFromDir(dir: File) {
         if (!dir.exists() || !dir.isDirectory) return
-        dir.walkTopLevel().maxDepth(3).forEach { file -> if (file.isFile && (file.name.endsWith(".md") || file.name.endsWith(".markdown"))) loadSkill(file) }
+        dir.walk().maxDepth(3).forEach { file -> if (file.isFile && (file.name.endsWith(".md") || file.name.endsWith(".markdown"))) loadSkill(file) }
     }
 
     private fun loadSkill(file: File) {
