@@ -227,9 +227,9 @@ jobs:
           name: mimicry-claw-macos-x64
           path: mimicry-claw-macos-x64.zip
 
-  package-macos-arm64:
+  package-macos:
     needs: build-jar
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Download JAR
@@ -237,6 +237,27 @@ jobs:
         with:
           name: mimicry-claw-jar
           path: build/libs/
+      - name: Create macOS x64 package
+        run: |
+          mkdir -p pkg-macos-x64
+          cp build/libs/mimicry-claw-1.0.0.jar pkg-macos-x64/
+          cat > pkg-macos-x64/run.sh << 'SHEOF'
+          #!/bin/sh
+          if ! command -v java >/dev/null 2>&1; then
+            echo "Java 21 required. Install: brew install openjdk@21"
+            exit 1
+          fi
+          exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"
+          SHEOF
+          chmod +x pkg-macos-x64/run.sh
+          cat > pkg-macos-x64/README.txt << 'READEOF'
+          Mimicry Claw - macOS Intel
+          =========================
+          Requirements: Java 21 JDK
+          Install: brew install openjdk@21
+          Run: ./run.sh
+          READEOF
+          cd pkg-macos-x64 && zip -r ../mimicry-claw-macos-x64.zip * && cd ..
       - name: Create macOS ARM64 package
         run: |
           mkdir -p pkg-macos-arm64
@@ -258,14 +279,19 @@ jobs:
           Run: ./run.sh
           READEOF
           cd pkg-macos-arm64 && zip -r ../mimicry-claw-macos-arm64.zip * && cd ..
-      - name: Upload
+      - name: Upload x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: mimicry-claw-macos-x64
+          path: mimicry-claw-macos-x64.zip
+      - name: Upload arm64
         uses: actions/upload-artifact@v4
         with:
           name: mimicry-claw-macos-arm64
           path: mimicry-claw-macos-arm64.zip
 
   release:
-    needs: [package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-macos-x64, package-macos-arm64]
+    needs: [package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-macos]
     runs-on: macos-latest
     if: always()
     steps:
