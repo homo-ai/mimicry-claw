@@ -132,7 +132,7 @@ This is an early-stage implementation. The agent core and tool system are functi
 
 ## License
 
-This project is for research and educational purposes. The original the original implementation is proprietary and owned by Anthropic. This project is an independent implementation.
+This project is for research and educational purposes. This project is an independent implementation.
 
 ## Contributing
 

@@ -307,35 +307,45 @@ jobs:
         run: |
           gh release delete v1.0.0 --yes 2>/dev/null || true
           gh api -X DELETE /repos/${{ github.repository }}/git/refs/tags/v1.0.0 2>/dev/null || true
+      - name: Create Release Notes File
+        run: |
+          cat > release_notes.md << 'NOTES_EOF'
+          ## Mimicry Claw v1.0.0 — Cross-Platform Build
+
+          ### Requirements
+          - **Java 21 JDK** (required for all platforms)
+          - Download from: https://adoptium.net/ or `brew install openjdk@21`
+
+          ### Usage
+          Extract the ZIP for your platform and run:
+          - **Windows**: `run.bat`
+          - **Linux/macOS**: `./run.sh`
+
+          ### API Configuration
+          Set your API key before running:
+          ```
+          export OPENAI_API_KEY="sk-..."
+          ```
+
+          ### Platforms
+          - `mimicry-claw-windows-x64.zip` — Windows 10/11 (Intel/AMD)
+          - `mimicry-claw-windows-arm64.zip` — Windows on ARM (Surface Pro X, etc.)
+          - `mimicry-claw-linux-x64.zip` — Linux x64 (Ubuntu, Debian, Fedora, etc.)
+          - `mimicry-claw-linux-arm64.zip` — Linux ARM64 (Raspberry Pi 4/5, etc.)
+          - `mimicry-claw-macos-x64.zip` — Intel-based Mac
+          - `mimicry-claw-macos-arm64.zip` — Apple Silicon Mac (M1/M2/M3)
+          NOTES_EOF
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create v1.0.0 \
             --title "Mimicry Claw v1.0.0" \
-            --notes "## Mimicry Claw v1.0.0 — Cross-Platform Build
-
-            ### Requirements
-            - **Java 21 JDK** (required for all platforms)
-            - Download from: https://adoptium.net/ or \`brew install openjdk@21\`
-
-            ### Usage
-            Extract the ZIP for your platform and run:
-            - **Windows**: \`run.bat\`
-            - **Linux/macOS**: \`./run.sh\`
-
-            ### API Configuration
-            Set your API key before running:
-            \`\`\`
-            export OPENAI_API_KEY=\"sk-...\"
-            \`\`\`
-
-            ### Platforms
-            - \`mimicry-claw-windows-x64.zip\` — Windows 10/11 (Intel/AMD)
-            - \`mimicry-claw-windows-arm64.zip\` — Windows on ARM (Surface Pro X, etc.)
-            - \`mimicry-claw-linux-x64.zip\` — Linux x64 (Ubuntu, Debian, Fedora, etc.)
-            - \`mimicry-claw-linux-arm64.zip\` — Linux ARM64 (Raspberry Pi 4/5, etc.)
-            - \`mimicry-claw-macos-x64.zip\` — Intel-based Mac
-            - \`mimicry-claw-macos-arm64.zip\` — Apple Silicon Mac (M1/M2/M3)" \
-            artifacts/*/*.zip \
-            --make_latest
+            --notes-file release_notes.md \
+            --make_latest \
+            artifacts/mimicry-claw-macos-x64/mimicry-claw-macos-x64.zip \
+            artifacts/mimicry-claw-macos-arm64/mimicry-claw-macos-arm64.zip \
+            artifacts/mimicry-claw-windows-x64/mimicry-claw-windows-x64.zip \
+            artifacts/mimicry-claw-windows-arm64/mimicry-claw-windows-arm64.zip \
+            artifacts/mimicry-claw-linux-x64/mimicry-claw-linux-x64.zip \
+            artifacts/mimicry-claw-linux-arm64/mimicry-claw-linux-arm64.zip
