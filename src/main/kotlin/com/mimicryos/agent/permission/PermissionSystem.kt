@@ -25,28 +25,29 @@ class PermissionSystem {
         if (permissionContext.mode == "bypass" && permissionContext.isBypassPermissionsModeAvailable) return PermissionResult.allow(input)
         if (permissionContext.mode == "auto" && permissionContext.isAutoModeAvailable ?: false) return checkAutoMode(tool, input, context)
         if (tool.requiresUserInteraction()) return PermissionResult.ask("Tool ${tool.name} requires user interaction", "user_interaction")
-        val isDestructive = try { tool.isDestructive(input as Any) } catch (e: Exception) { false }
+        val isDestructive = try { (tool as Tool<Any, Any>).isDestructive(input as Any) } catch (e: Exception) { false }
         if (isDestructive && permissionContext.mode == "default") return PermissionResult.ask("Tool ${tool.name} performs destructive operations", "destructive")
         if (permissionContext.mode == "default" && !permissionContext.shouldAvoidPermissionPrompts) return PermissionResult.ask("Tool ${tool.name} requires permission", "default")
         return PermissionResult.allow(input)
     }
 
     private fun isDeniedByRules(tool: Tool<*, *>, context: ToolPermissionContext): Boolean {
-        for ((_, patterns) in context.alwaysDenyRules) { for (pattern in patterns) { if (matchesPattern(tool.name, pattern)) return true } }
+        for ((_, patterns) in context.alwaysDenyRules.entries) { for (pattern in patterns) { if (matchesPattern(tool.name, pattern)) return true } }
         return false
     }
 
     private fun isAllowedByRules(tool: Tool<*, *>, context: ToolPermissionContext): Boolean {
-        for ((_, patterns) in context.alwaysAllowRules) { for (pattern in patterns) { if (matchesPattern(tool.name, pattern)) return true } }
+        for ((_, patterns) in context.alwaysAllowRules.entries) { for (pattern in patterns) { if (matchesPattern(tool.name, pattern)) return true } }
         return false
     }
 
     private fun matchesPattern(name: String, pattern: String): Boolean = when { pattern.endsWith("*") -> name.startsWith(pattern.dropLast(1)); pattern.contains("*") -> { val p = pattern.split("*"); p.size == 2 && name.startsWith(p[0]) && name.endsWith(p[1]) }; else -> name == pattern }
 
     private suspend fun checkAutoMode(tool: Tool<*, *>, input: Map<String, Any>, context: ToolUseContext): PermissionResult {
-        val classifierInput = tool.toAutoClassifierInput(input as Any)
+        val typedTool = tool as Tool<Any, Any>
+        val classifierInput = typedTool.toAutoClassifierInput(input as Any)
         if (classifierInput as? String == "") return PermissionResult.allow(input)
-        return if (tool.isReadOnly(input as Any) && !tool.isDestructive(input as Any)) PermissionResult.allow(input) else PermissionResult.ask("Auto mode requires review for ${tool.name}", "auto_mode_review")
+        return if (typedTool.isReadOnly(input as Any) && !typedTool.isDestructive(input as Any)) PermissionResult.allow(input) else PermissionResult.ask("Auto mode requires review for ${tool.name}", "auto_mode_review")
     }
 
     private fun recordDenial(toolName: String) { denialTracking.count++; denialTracking.lastDenial = System.currentTimeMillis() }
