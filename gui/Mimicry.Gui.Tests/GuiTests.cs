@@ -10,7 +10,6 @@ using Mimicry.Gui.Views;
 using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(Mimicry.Gui.Program))]
-[assembly: AvaloniaTestFramework]
 
 namespace Mimicry.Gui.Tests;
 
@@ -154,7 +153,7 @@ public class GuiTests
                 Key = Key.Enter,
                 RoutedEvent = InputElement.KeyDownEvent,
             });
-            Assert.Contains("disconnected", vm.Notice, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("disconnected", vm.Notice);
         }
         finally
         {
