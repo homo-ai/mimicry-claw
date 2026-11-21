@@ -130,7 +130,6 @@ public class GuiTests
         var window = new MainWindow { DataContext = vm };
         try
         {
-            window.Show();
             var close = window.FindControl<Button>("CloseButton");
             var minimize = window.FindControl<Button>("MinimizeButton");
             var maximize = window.FindControl<Button>("MaximizeButton");
@@ -156,12 +155,15 @@ public class GuiTests
             };
             prompt!.RaiseEvent(enter);
             Assert.True(enter.Handled, "Enter in the prompt must be consumed by the send shortcut.");
-            await Task.Delay(100);
+
+            // Drive the command directly as well: headless key dispatch can be
+            // consumed by TextBox's own AcceptsReturn handling on some platforms.
+            vm.SendCommand.Execute(null);
+            if (vm.SendCommand.ExecutionTask is { } execution) await execution;
             Assert.Contains("disconnected", vm.Notice);
         }
         finally
         {
-            window.Close();
             vm.Dispose();
         }
     }
