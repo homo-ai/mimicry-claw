@@ -847,11 +847,15 @@ object ToolSearchTool : Tool<ToolSearchInput, ToolSearchOutput> {
     override fun parseInput(input: Map<String, String>) = ToolSearchInput(input["query"] ?: error("Missing required field: query"))
     override suspend fun call(args: ToolSearchInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ToolSearchOutput> {
         val query = args.query.trim().lowercase()
-        val options = DescriptionOptions(context.options.isNonInteractiveSession, context.options.toolPermissionContext, context.options.tools)
+        val promptOptions = PromptOptions(
+            { context.options.toolPermissionContext },
+            context.options.tools,
+            context.options.agentDefinitions.allAgents,
+        )
         val matches = context.options.tools
-            .filter { query.isEmpty() || it.name.lowercase().contains(query) || it.prompt(options).lowercase().contains(query) }
+            .filter { query.isEmpty() || it.name.lowercase().contains(query) || it.prompt(promptOptions).lowercase().contains(query) }
             .take(20)
-            .map { "${it.name} · ${it.prompt(options)}" }
+            .map { "${it.name} · ${it.prompt(promptOptions)}" }
         return ToolResult(ToolSearchOutput(matches))
     }
     override suspend fun description(input: ToolSearchInput, options: DescriptionOptions): String = "Search tools"

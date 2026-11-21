@@ -27,7 +27,7 @@ data class TaskStoreFile(
 )
 
 /** Per-project task/todo state. Persisted so a restarted runtime does not lose it. */
-class TaskStore private constructor(private val file: File) {
+class TaskStore internal constructor(private val file: File) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; encodeDefaults = true }
     private var state: TaskStoreFile = load()
 
