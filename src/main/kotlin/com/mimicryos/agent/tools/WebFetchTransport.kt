@@ -90,16 +90,11 @@ class JdkWebFetchTransport : WebFetchTransport {
                 if (total >= WebFetchPolicy.MAX_BYTES) break
             }
             val charset = charsetFrom(contentType)
-            val raw = String(bytes.toByteArray(), charset)
-            val text = if (contentType.contains("html", ignoreCase = true) || contentType.contains("xml", ignoreCase = true)) {
-                HtmlTextExtractor.extract(raw)
-            } else {
-                raw.take(WebFetchPolicy.MAX_CHARS)
-            }
+            val raw = String(bytes.toByteArray(), charset).take(WebFetchPolicy.MAX_CHARS)
             if (status !in 200..299) {
-                throw IllegalStateException("WebFetch failed (HTTP $status): ${text.take(500)}")
+                throw IllegalStateException("WebFetch failed (HTTP $status): ${raw.take(500)}")
             }
-            return WebFetchResponse(status, contentType, text, url, total >= WebFetchPolicy.MAX_BYTES)
+            return WebFetchResponse(status, contentType, raw, url, total >= WebFetchPolicy.MAX_BYTES)
         }
     }
 

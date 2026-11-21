@@ -529,6 +529,11 @@ object WebFetchTool : Tool<WebFetchInput, WebFetchOutput> {
     override suspend fun call(args: WebFetchInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<WebFetchOutput> = try {
         WebFetchPolicy.validate(args.url)
         val response = withContext(Dispatchers.IO) { transport.fetch(args.url, args.timeout) }
+        val text = if (response.contentType.contains("html", ignoreCase = true) || response.contentType.contains("xml", ignoreCase = true)) {
+            HtmlTextExtractor.extract(response.body)
+        } else {
+            response.body.take(WebFetchPolicy.MAX_CHARS)
+        }
         val metadata = mutableMapOf(
             "status" to response.statusCode.toString(),
             "contentType" to response.contentType,
@@ -536,7 +541,7 @@ object WebFetchTool : Tool<WebFetchInput, WebFetchOutput> {
             "truncated" to response.truncated.toString(),
         )
         if (args.prompt.isNotBlank()) metadata["prompt"] = args.prompt
-        ToolResult(WebFetchOutput(response.body, metadata))
+        ToolResult(WebFetchOutput(text, metadata))
     } catch (e: Exception) {
         ToolResult(WebFetchOutput("", error = e.message ?: "WebFetch failed"))
     }
