@@ -55,6 +55,7 @@ public class GuiTests
     public void ReducersMergeStreamingTextWithoutDuplicatingReplay()
     {
         using var vm = new MainViewModel();
+        vm.ActivateSession("s1");
         vm.ApplyEvent(Event(1, """
             {"type":"task_created","taskId":"t1","sessionId":"s1","prompt":"first"}
             """));
@@ -108,6 +109,7 @@ public class GuiTests
     {
         using var vm = new MainViewModel();
         vm.ApplySnapshot(new AppSnapshot { RuntimeId = "r1" });
+        vm.ActivateSession("s1");
         vm.ApplyEvent(Event(1, """
             {"type":"task_created","taskId":"t1","sessionId":"s1","prompt":"old"}
             """));
@@ -122,7 +124,7 @@ public class GuiTests
     }
 
     [AvaloniaFact]
-    public void WindowLoadsCustomChromeSeparateWindowActionsAndInputBindings()
+    public async Task WindowLoadsCustomChromeSeparateWindowActionsAndInputBindings()
     {
         var vm = new MainViewModel();
         var window = new MainWindow { DataContext = vm };
@@ -147,12 +149,14 @@ public class GuiTests
             Assert.False(vm.IsConnected, "Opening a window must not auto-start or stop a runtime.");
             Assert.Contains("Exit", "Exit GUI (keep runtime running)");
 
-            prompt!.KeyDown += (_, _) => { };
-            prompt.RaiseEvent(new KeyEventArgs
+            var enter = new KeyEventArgs
             {
                 Key = Key.Enter,
                 RoutedEvent = InputElement.KeyDownEvent,
-            });
+            };
+            prompt!.RaiseEvent(enter);
+            Assert.True(enter.Handled, "Enter in the prompt must be consumed by the send shortcut.");
+            await Task.Delay(100);
             Assert.Contains("disconnected", vm.Notice);
         }
         finally
