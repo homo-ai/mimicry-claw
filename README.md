@@ -13,13 +13,13 @@ Implemented and verified in CI:
 - CLI: `tui`, `exec`, `serve`, `status`, `sessions`, `resume`, `providers`, `tools`, `gui`.
 - TUI: Normal Mode and Full Screen Mode.
 - GUI: .NET 8 + Avalonia 11 MVVM desktop client, self-contained packages for six targets.
-- 16 implemented tools: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `TodoWrite`, `TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`, `NotebookEdit`, `ToolSearch`, `ListMcpResources`, `ReadMcpResource`, `Brief`.
+- 17 implemented tools: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `TodoWrite`, `TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`, `NotebookEdit`, `ToolSearch`, `ListMcpResources`, `ReadMcpResource`, `Brief`, `WebFetch`.
 - Task/todo state persists per project in `.mimicry/tasks.json`.
-- 13 tools remain honest stubs and are never advertised to the model.
+- 12 tools remain honest stubs and are never advertised to the model.
 
 Not yet integrated:
 
-- `Agent`, `TaskOutput`, `TaskStop`, `Skill`, `EnterPlanMode`, `ExitPlanMode`, `WebFetch`, `WebSearch`, `AskUserQuestion`, `LSP`, `Config`, `EnterWorktree`, `ExitWorktree`.
+- `Agent`, `TaskOutput`, `TaskStop`, `Skill`, `EnterPlanMode`, `ExitPlanMode`, `WebSearch`, `AskUserQuestion`, `LSP`, `Config`, `EnterWorktree`, `ExitWorktree`.
 - Live MCP connections, real subagent scheduling, Skills content, DSH plugins.
 - GUI Tests/Build panels and PTY terminal. These are shown as unintegrated rather than faked.
 - Wayland/Hyprland native window semantics and ARM64 desktop runtime require device validation.

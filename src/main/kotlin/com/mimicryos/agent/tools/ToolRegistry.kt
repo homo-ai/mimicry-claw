@@ -2,6 +2,8 @@ package com.mimicryos.agent.tools
 
 import com.mimicryos.agent.core.*
 import com.mimicryos.agent.provider.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -496,15 +498,61 @@ object ExitPlanModeV2Tool : Tool<ExitPlanModeInput, ExitPlanModeOutput> {
 }
 
 object WebFetchTool : Tool<WebFetchInput, WebFetchOutput> {
+    internal var transport: WebFetchTransport = JdkWebFetchTransport()
+
     override val name = "WebFetch"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: WebFetchInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<WebFetchOutput> = ToolResult(WebFetchOutput("", emptyMap()))
-    override suspend fun description(input: WebFetchInput, options: DescriptionOptions): String = "Fetch web content"
-    override fun mapToolResultToToolResultBlockParam(content: WebFetchOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.content)))
-    override fun prompt(options: PromptOptions): String = "Fetch content from URLs"
+    override val isImplemented = true
+    override val maxResultSizeChars = WebFetchPolicy.MAX_CHARS
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "url" to mapOf("type" to "string", "description" to "Public http/https URL to fetch"),
+            "prompt" to mapOf("type" to "string", "description" to "Optional note recorded in metadata; no model-side summarization is performed"),
+            "timeout" to mapOf("type" to "integer", "description" to "Timeout in milliseconds, clamped to 1000..60000"),
+        ),
+        required = listOf("url"),
+    )
+
+    override fun parseInput(input: Map<String, String>) = WebFetchInput(
+        url = input["url"] ?: error("Missing required field: url"),
+        prompt = input["prompt"] ?: "",
+        timeout = input["timeout"]?.toIntOrNull() ?: 30_000,
+    )
+
+    override suspend fun validateInput(input: WebFetchInput, context: ToolUseContext): ValidationResult = try {
+        WebFetchPolicy.validate(input.url)
+        ValidationResult.SUCCESS
+    } catch (e: Exception) {
+        ValidationResult.failure(e.message ?: "Invalid WebFetch URL")
+    }
+
+    override suspend fun call(args: WebFetchInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<WebFetchOutput> = try {
+        WebFetchPolicy.validate(args.url)
+        val response = withContext(Dispatchers.IO) { transport.fetch(args.url, args.timeout) }
+        val metadata = mutableMapOf(
+            "status" to response.statusCode.toString(),
+            "contentType" to response.contentType,
+            "url" to response.finalUrl,
+            "truncated" to response.truncated.toString(),
+        )
+        if (args.prompt.isNotBlank()) metadata["prompt"] = args.prompt
+        ToolResult(WebFetchOutput(response.body, metadata))
+    } catch (e: Exception) {
+        ToolResult(WebFetchOutput("", error = e.message ?: "WebFetch failed"))
+    }
+
+    override suspend fun description(input: WebFetchInput, options: DescriptionOptions): String = "Fetch public web content"
+    override fun mapToolResultToToolResultBlockParam(content: WebFetchOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.error ?: content.content)),
+        isError = content.error != null,
+    )
+    override fun prompt(options: PromptOptions): String = "Fetch public HTTP and HTTPS pages as plain text"
     override fun userFacingName(input: WebFetchInput): String = "WebFetch"
+    override fun getToolUseSummary(input: WebFetchInput): String = input.url
     override fun toAutoClassifierInput(input: WebFetchInput): Any = input.url
     override fun isOpenWorld(input: WebFetchInput): Boolean = true
+    override fun isReadOnly(input: WebFetchInput): Boolean = true
+    override fun isConcurrencySafe(input: WebFetchInput): Boolean = true
 }
 
 object WebSearchTool : Tool<WebSearchInput, WebSearchOutput> {
@@ -921,7 +969,7 @@ data class EnterPlanModeOutput(val entered: Boolean)
 data class ExitPlanModeInput(val plan: String)
 data class ExitPlanModeOutput(val success: Boolean, val plan: String)
 data class WebFetchInput(val url: String, val prompt: String = "", val timeout: Int = 30000)
-data class WebFetchOutput(val content: String, val metadata: Map<String, String> = emptyMap())
+data class WebFetchOutput(val content: String, val metadata: Map<String, String> = emptyMap(), val error: String? = null)
 data class WebSearchInput(val query: String, val max_results: Int = 10)
 data class WebSearchOutput(val results: List<WebSearchResult>)
 data class WebSearchResult(val title: String, val url: String, val snippet: String)

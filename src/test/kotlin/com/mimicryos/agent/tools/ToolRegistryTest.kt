@@ -21,7 +21,7 @@ class ToolRegistryTest {
             setOf(
                 "Bash", "Read", "Write", "Edit", "Glob", "Grep",
                 "TodoWrite", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList",
-                "NotebookEdit", "ToolSearch", "ListMcpResources", "ReadMcpResource", "Brief",
+                "NotebookEdit", "ToolSearch", "ListMcpResources", "ReadMcpResource", "Brief", "WebFetch",
             ),
             enabled.map { it.name }.toSet(),
         )
@@ -60,6 +60,7 @@ class ToolRegistryTest {
         assertDecodes("ReadMcpResource", mapOf("uri" to "file:///docs"), "file:///docs")
         assertDecodes("ListMcpResources", mapOf("server_name" to "docs"), "docs")
         assertDecodes("Brief", mapOf("content" to "summary"), "summary")
+        assertDecodes("WebFetch", mapOf("url" to "https://example.com"), "https://example.com")
     }
 
     @Test

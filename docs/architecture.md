@@ -66,7 +66,7 @@ GUI 合并持久化 transcript 与 SSE 回放时按消息 ID / 工具调用 ID �
 ### 已实现并有测试覆盖
 
 - Agent Loop：工具调用 → 权限判定 → 工具执行 → 结果回传 → 下一轮；`maxTurns`、中止、用量统计。
-- 工具：Bash、Read、Write、Edit、Glob、Grep（真实文件/进程操作，失败以 tool error 回传）；TodoWrite、TaskCreate/Get/Update/List（项目级持久化任务/待办）；NotebookEdit（真实 .ipynb 单元格编辑）；ToolSearch；ListMcpResources/ReadMcpResource（读取已配置资源，不伪造 live MCP 连接）；Brief。当前共 16 个真实工具。
+- 工具：Bash、Read、Write、Edit、Glob、Grep（真实文件/进程操作，失败以 tool error 回传）；TodoWrite、TaskCreate/Get/Update/List（项目级持久化任务/待办）；NotebookEdit（真实 .ipynb 单元格编辑）；ToolSearch；ListMcpResources/ReadMcpResource（读取已配置资源，不伪造 live MCP 连接）；Brief；WebFetch（公共 HTTP/HTTPS 抓取、拒绝私有地址与重定向、限制响应大小并提取纯文本）。当前共 17 个真实工具。
 - Provider：Anthropic、OpenAI、Google、DeepSeek、Kimi、ZCode、MiMo（OpenAI 兼容协议）。
 - 协议：Anthropic Messages、OpenAI Chat Completions、Google Gemini。
 - 会话：JSON 落盘、读取、恢复、新会话、transcript API；拒绝路径穿越 ID。
@@ -80,7 +80,7 @@ GUI 合并持久化 transcript 与 SSE 回放时按消息 ID / 工具调用 ID �
 
 ### 未实现（不得对外宣称可用）
 
-- 13 个工具仍是 stub（Agent、TaskOutput、TaskStop、Skill、EnterPlanMode、ExitPlanMode、WebFetch、WebSearch、AskUserQuestion、LSP、Config、EnterWorktree、ExitWorktree），`ToolRegistry.getEnabled()` 不把它们发给模型；`mimicry tools` 会标记为 `stub`。
+- 12 个工具仍是 stub（Agent、TaskOutput、TaskStop、Skill、EnterPlanMode、ExitPlanMode、WebSearch、AskUserQuestion、LSP、Config、EnterWorktree、ExitWorktree），`ToolRegistry.getEnabled()` 不把它们发给模型；`mimicry tools` 会标记为 `stub`。
 - Skills / DSH 插件集成、MCP 实际连接、Subagent 真实调度、Plan Mode 交互尚未接入运行时；GUI 只显示 Runtime 已报告的 Plan，不能创建或驱动 Plan。
 - Tests / Build Output 底部面板没有接入采集器，界面明确显示"未集成"，不伪造绿色状态。
 - Terminal 面板是显式用户命令的 stdout/stderr 输出查看器，不是 PTY、不是 Agent 工具通道。
@@ -104,4 +104,4 @@ GUI 合并持久化 transcript 与 SSE 回放时按消息 ID / 工具调用 ID �
 1. 在真实 Windows/macOS/Linux 桌面环境验收自绘标题栏、窗口语义、缩放与 Wayland/Hyprland 降级。
 2. 将 Tests / Build Output 面板接到实际采集器，而不是目前的明确未集成状态。
 3. 接入 Skills / MCP / Subagent / Plan Mode，再把 UI 的只读呈现升级为可操作界面。
-4. 逐步把剩余 13 个 stub 工具替换为真实实现，并保持 `mimicry tools` 的诚实标注。
+4. 逐步把剩余 12 个 stub 工具替换为真实实现，并保持 `mimicry tools` 的诚实标注。
