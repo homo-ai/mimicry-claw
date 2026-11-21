@@ -40,6 +40,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
     implementation("com.github.ajalt.clikt:clikt:5.0.0")
     implementation("com.github.ajalt.mordant:mordant:3.0.0")
+    implementation("org.jline:jline:3.29.0")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
     testImplementation("io.mockk:mockk:1.13.13")
@@ -59,8 +60,10 @@ tasks.register<Jar>("fatJar") {
         attributes("Main-Class" to "com.mimicryos.agent.MainKt")
     }
     from(sourceSets.main.get().output)
-    from(configurations.runtimeClasspath.get()) {
-        exclude("META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.EC", "META-INF/versions/")
+    // Unpack dependency JARs into the fat JAR. Nesting the JARs themselves
+    // makes the JVM unable to load their classes (e.g. kotlin/jvm/internal/Intrinsics).
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
+        exclude("META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.EC")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

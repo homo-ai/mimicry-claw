@@ -7,9 +7,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAR: build/libs/mimicry-claw-1.0.0.jar
+
 jobs:
   build-jar:
-    runs-on: macos-latest
+    name: Build, test and verify the runtime
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -23,329 +34,203 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Compile Kotlin
-        run: gradle compileKotlin
+        run: gradle --no-daemon --stacktrace compileKotlin
 
-      - name: Run Tests
-        run: gradle test
+      - name: Run tests
+        run: gradle --no-daemon --stacktrace test
 
-      - name: Build Fat JAR
-        run: gradle fatJar
+      - name: Build fat JAR
+        run: gradle --no-daemon --stacktrace fatJar
 
-      - name: Verify JAR
+      - name: Verify JAR (help)
         run: |
           ls -lh build/libs/
-          java -jar build/libs/mimicry-claw-1.0.0.jar --help 2>&1 || true
+          java -jar "$JAR" --help
+
+      - name: Verify JAR (CLI surface)
+        run: |
+          set -euo pipefail
+          java -jar "$JAR" --version
+          java -jar "$JAR" tools
+          java -jar "$JAR" providers
+          java -jar "$JAR" status --json
+          java -jar "$JAR" sessions --json
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: mimicry-claw-jar
           path: build/libs/mimicry-claw-1.0.0.jar
+          if-no-files-found: error
 
-  package-windows-x64:
+  package:
+    name: Package ${{ matrix.target }}
     needs: build-jar
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            label: Windows x64
+            launcher: run.bat
+            requirements: Java 21 JDK for Windows (https://adoptium.net/)
+            usage: double-click run.bat
+          - target: windows-arm64
+            label: Windows ARM64
+            launcher: run.bat
+            requirements: Java 21 JDK for Windows ARM64 (https://adoptium.net/)
+            usage: double-click run.bat
+          - target: linux-x64
+            label: Linux x64
+            launcher: run.sh
+            requirements: Java 21 JDK (sudo apt install openjdk-21-jdk)
+            usage: ./run.sh
+          - target: linux-arm64
+            label: Linux ARM64
+            launcher: run.sh
+            requirements: Java 21 JDK for ARM64 (sudo apt install openjdk-21-jdk)
+            usage: ./run.sh
+          - target: macos-x64
+            label: macOS Intel
+            launcher: run.sh
+            requirements: Java 21 JDK (brew install openjdk@21)
+            usage: ./run.sh
+          - target: macos-arm64
+            label: macOS Apple Silicon
+            launcher: run.sh
+            requirements: Java 21 JDK (brew install openjdk@21)
+            usage: ./run.sh
     steps:
-      - uses: actions/checkout@v4
       - name: Download JAR
         uses: actions/download-artifact@v4
         with:
           name: mimicry-claw-jar
           path: build/libs/
-      - name: Create Windows x64 package
+
+      - name: Assemble package
+        env:
+          TARGET: ${{ matrix.target }}
+          LABEL: ${{ matrix.label }}
+          LAUNCHER: ${{ matrix.launcher }}
+          REQUIREMENTS: ${{ matrix.requirements }}
+          USAGE: ${{ matrix.usage }}
         run: |
-          mkdir -p pkg-windows-x64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-windows-x64/
-          cat > pkg-windows-x64/run.bat << 'BATEOF'
-          @echo off
-          where java.exe >nul 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            echo Java 21 required. Download from https://adoptium.net/
-            exit /b 1
-          )
-          java -jar "%~dp0mimicry-claw-1.0.0.jar" %*
-          BATEOF
-          cat > pkg-windows-x64/README.txt << 'READEOF'
-          Mimicry Claw - Windows x64
-          ===========================
-          Requirements: Java 21 JDK
-          Install: https://adoptium.net/
-          Run: double-click run.bat
-          READEOF
-          cd pkg-windows-x64 && zip -r ../mimicry-claw-windows-x64.zip * && cd ..
+          set -euo pipefail
+          dir="pkg-${TARGET}"
+          mkdir -p "$dir"
+          cp "$JAR" "$dir/"
+
+          if [ "$LAUNCHER" = "run.bat" ]; then
+            printf '%s\r\n' \
+              '@echo off' \
+              'where java.exe >nul 2>&1' \
+              'if %ERRORLEVEL% NEQ 0 (' \
+              '  echo Java 21 is required. Get it from https://adoptium.net/' \
+              '  exit /b 1' \
+              ')' \
+              'java -jar "%~dp0mimicry-claw-1.0.0.jar" %*' > "$dir/run.bat"
+          else
+            printf '%s\n' \
+              '#!/bin/sh' \
+              'if ! command -v java >/dev/null 2>&1; then' \
+              '  echo "Java 21 is required. Install it, then run this script again."' \
+              '  exit 1' \
+              'fi' \
+              'exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"' > "$dir/run.sh"
+            chmod +x "$dir/run.sh"
+          fi
+
+          printf '%s\n' \
+            "Mimicry Claw - ${LABEL}" \
+            '=========================' \
+            "Requirements: ${REQUIREMENTS}" \
+            "Run: ${USAGE}" \
+            '' \
+            'Commands:' \
+            '  run --help                 Show all commands' \
+            '  run tui                    Interactive TUI' \
+            '  run exec "your prompt"     One-shot task' \
+            '  run serve                  Start the local runtime (HTTP + SSE)' \
+            '  run status                 Show runtime status' \
+            > "$dir/README.txt"
+
+          cd "$dir"
+          zip -r "../mimicry-claw-${TARGET}.zip" .
+          cd ..
+          ls -lh "mimicry-claw-${TARGET}.zip"
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: mimicry-claw-windows-x64
-          path: mimicry-claw-windows-x64.zip
-
-  package-windows-arm64:
-    needs: build-jar
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: mimicry-claw-jar
-          path: build/libs/
-      - name: Create Windows ARM64 package
-        run: |
-          mkdir -p pkg-windows-arm64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-windows-arm64/
-          cat > pkg-windows-arm64/run.bat << 'BATEOF'
-          @echo off
-          where java.exe >nul 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            echo Java 21 required. Download from https://adoptium.net/
-            exit /b 1
-          )
-          java -jar "%~dp0mimicry-claw-1.0.0.jar" %*
-          BATEOF
-          cat > pkg-windows-arm64/README.txt << 'READEOF'
-          Mimicry Claw - Windows ARM64
-          ============================
-          Requirements: Java 21 JDK (ARM64)
-          Install: https://adoptium.net/
-          Run: double-click run.bat
-          READEOF
-          cd pkg-windows-arm64 && zip -r ../mimicry-claw-windows-arm64.zip * && cd ..
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: mimicry-claw-windows-arm64
-          path: mimicry-claw-windows-arm64.zip
-
-  package-linux-x64:
-    needs: build-jar
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: mimicry-claw-jar
-          path: build/libs/
-      - name: Create Linux x64 package
-        run: |
-          mkdir -p pkg-linux-x64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-linux-x64/
-          cat > pkg-linux-x64/run.sh << 'SHEOF'
-          #!/bin/sh
-          if ! command -v java >/dev/null 2>&1; then
-            echo "Java 21 required. Install: sudo apt install openjdk-21-jdk"
-            exit 1
-          fi
-          exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"
-          SHEOF
-          chmod +x pkg-linux-x64/run.sh
-          cat > pkg-linux-x64/README.txt << 'READEOF'
-          Mimicry Claw - Linux x64
-          ========================
-          Requirements: Java 21 JDK
-          Install: sudo apt install openjdk-21-jdk
-          Run: ./run.sh
-          READEOF
-          cd pkg-linux-x64 && zip -r ../mimicry-claw-linux-x64.zip * && cd ..
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: mimicry-claw-linux-x64
-          path: mimicry-claw-linux-x64.zip
-
-  package-linux-arm64:
-    needs: build-jar
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: mimicry-claw-jar
-          path: build/libs/
-      - name: Create Linux ARM64 package
-        run: |
-          mkdir -p pkg-linux-arm64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-linux-arm64/
-          cat > pkg-linux-arm64/run.sh << 'SHEOF'
-          #!/bin/sh
-          if ! command -v java >/dev/null 2>&1; then
-            echo "Java 21 required. Install: sudo apt install openjdk-21-jdk"
-            exit 1
-          fi
-          exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"
-          SHEOF
-          chmod +x pkg-linux-arm64/run.sh
-          cat > pkg-linux-arm64/README.txt << 'READEOF'
-          Mimicry Claw - Linux ARM64
-          =========================
-          Requirements: Java 21 JDK (ARM64)
-          Install: sudo apt install openjdk-21-jdk
-          Run: ./run.sh
-          READEOF
-          cd pkg-linux-arm64 && zip -r ../mimicry-claw-linux-arm64.zip * && cd ..
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: mimicry-claw-linux-arm64
-          path: mimicry-claw-linux-arm64.zip
-
-  package-macos-x64:
-    needs: build-jar
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: mimicry-claw-jar
-          path: build/libs/
-      - name: Create macOS x64 package
-        run: |
-          mkdir -p pkg-macos-x64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-macos-x64/
-          cat > pkg-macos-x64/run.sh << 'SHEOF'
-          #!/bin/sh
-          if ! command -v java >/dev/null 2>&1; then
-            echo "Java 21 required. Install: brew install openjdk@21"
-            exit 1
-          fi
-          exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"
-          SHEOF
-          chmod +x pkg-macos-x64/run.sh
-          cat > pkg-macos-x64/README.txt << 'READEOF'
-          Mimicry Claw - macOS Intel
-          =========================
-          Requirements: Java 21 JDK
-          Install: brew install openjdk@21
-          Run: ./run.sh
-          READEOF
-          cd pkg-macos-x64 && zip -r ../mimicry-claw-macos-x64.zip * && cd ..
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: mimicry-claw-macos-x64
-          path: mimicry-claw-macos-x64.zip
-
-  package-macos:
-    needs: build-jar
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: mimicry-claw-jar
-          path: build/libs/
-      - name: Create macOS x64 package
-        run: |
-          mkdir -p pkg-macos-x64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-macos-x64/
-          cat > pkg-macos-x64/run.sh << 'SHEOF'
-          #!/bin/sh
-          if ! command -v java >/dev/null 2>&1; then
-            echo "Java 21 required. Install: brew install openjdk@21"
-            exit 1
-          fi
-          exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"
-          SHEOF
-          chmod +x pkg-macos-x64/run.sh
-          cat > pkg-macos-x64/README.txt << 'READEOF'
-          Mimicry Claw - macOS Intel
-          =========================
-          Requirements: Java 21 JDK
-          Install: brew install openjdk@21
-          Run: ./run.sh
-          READEOF
-          cd pkg-macos-x64 && zip -r ../mimicry-claw-macos-x64.zip * && cd ..
-      - name: Create macOS ARM64 package
-        run: |
-          mkdir -p pkg-macos-arm64
-          cp build/libs/mimicry-claw-1.0.0.jar pkg-macos-arm64/
-          cat > pkg-macos-arm64/run.sh << 'SHEOF'
-          #!/bin/sh
-          if ! command -v java >/dev/null 2>&1; then
-            echo "Java 21 required. Install: brew install openjdk@21"
-            exit 1
-          fi
-          exec java -jar "$(dirname "$0")/mimicry-claw-1.0.0.jar" "$@"
-          SHEOF
-          chmod +x pkg-macos-arm64/run.sh
-          cat > pkg-macos-arm64/README.txt << 'READEOF'
-          Mimicry Claw - macOS Apple Silicon
-          ==================================
-          Requirements: Java 21 JDK
-          Install: brew install openjdk@21
-          Run: ./run.sh
-          READEOF
-          cd pkg-macos-arm64 && zip -r ../mimicry-claw-macos-arm64.zip * && cd ..
-      - name: Upload x64
-        uses: actions/upload-artifact@v4
-        with:
-          name: mimicry-claw-macos-x64
-          path: mimicry-claw-macos-x64.zip
-      - name: Upload arm64
-        uses: actions/upload-artifact@v4
-        with:
-          name: mimicry-claw-macos-arm64
-          path: mimicry-claw-macos-arm64.zip
+          name: mimicry-claw-${{ matrix.target }}
+          path: mimicry-claw-${{ matrix.target }}.zip
+          if-no-files-found: error
 
   release:
-    needs: [package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-macos]
-    runs-on: macos-latest
-    if: always()
+    name: Publish v1.0.0
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
       - name: List artifacts
-        run: find artifacts -type f
-      - name: Delete existing tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete v1.0.0 --yes 2>/dev/null || true
-          gh api -X DELETE /repos/${{ github.repository }}/git/refs/tags/v1.0.0 2>/dev/null || true
-      - name: Create Release Notes File
+        run: find artifacts -type f | sort
+
+      - name: Write release notes
         run: |
           cat > release_notes.md << 'NOTES_EOF'
-          ## Mimicry Claw v1.0.0 — Cross-Platform Build
+          ## Mimicry Claw v1.0.0
 
           ### Requirements
-          - **Java 21 JDK** (required for all platforms)
-          - Download from: https://adoptium.net/ or `brew install openjdk@21`
+          - **Java 21 JDK** on every platform
+          - Download: https://adoptium.net/ (or `brew install openjdk@21` on macOS)
 
           ### Usage
-          Extract the ZIP for your platform and run:
-          - **Windows**: `run.bat`
-          - **Linux/macOS**: `./run.sh`
+          Extract the ZIP for your platform and run `run.bat` (Windows) or `./run.sh` (Linux/macOS).
 
-          ### API Configuration
-          Set your API key before running:
           ```
+          run --help                 Show all commands
+          run tui                    Interactive TUI (Normal / Full Screen)
+          run exec "your prompt"     One-shot task
+          run serve                  Start the local runtime (HTTP + SSE)
+          run status                 Show runtime status
+          ```
+
+          ### API configuration
+          Set the provider API key before running, for example:
+          ```
+          export ANTHROPIC_API_KEY="sk-ant-..."
           export OPENAI_API_KEY="sk-..."
           ```
 
-          ### Platforms
-          - `mimicry-claw-windows-x64.zip` — Windows 10/11 (Intel/AMD)
-          - `mimicry-claw-windows-arm64.zip` — Windows on ARM (Surface Pro X, etc.)
-          - `mimicry-claw-linux-x64.zip` — Linux x64 (Ubuntu, Debian, Fedora, etc.)
-          - `mimicry-claw-linux-arm64.zip` — Linux ARM64 (Raspberry Pi 4/5, etc.)
-          - `mimicry-claw-macos-x64.zip` — Intel-based Mac
-          - `mimicry-claw-macos-arm64.zip` — Apple Silicon Mac (M1/M2/M3)
+          ### Artifacts
+          - `mimicry-claw-windows-x64.zip`
+          - `mimicry-claw-windows-arm64.zip`
+          - `mimicry-claw-linux-x64.zip`
+          - `mimicry-claw-linux-arm64.zip`
+          - `mimicry-claw-macos-x64.zip`
+          - `mimicry-claw-macos-arm64.zip`
           NOTES_EOF
-      - name: Create Release
+
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          gh release delete v1.0.0 --yes --cleanup-tag || true
           gh release create v1.0.0 \
             --title "Mimicry Claw v1.0.0" \
             --notes-file release_notes.md \
-            --make_latest \
-            artifacts/mimicry-claw-macos-x64/mimicry-claw-macos-x64.zip \
-            artifacts/mimicry-claw-macos-arm64/mimicry-claw-macos-arm64.zip \
+            --latest \
             artifacts/mimicry-claw-windows-x64/mimicry-claw-windows-x64.zip \
             artifacts/mimicry-claw-windows-arm64/mimicry-claw-windows-arm64.zip \
             artifacts/mimicry-claw-linux-x64/mimicry-claw-linux-x64.zip \
-            artifacts/mimicry-claw-linux-arm64/mimicry-claw-linux-arm64.zip
+            artifacts/mimicry-claw-linux-arm64/mimicry-claw-linux-arm64.zip \
+            artifacts/mimicry-claw-macos-x64/mimicry-claw-macos-x64.zip \
+            artifacts/mimicry-claw-macos-arm64/mimicry-claw-macos-arm64.zip

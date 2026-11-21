@@ -43,6 +43,19 @@ interface Tool<Input : Any, Output : Any> {
     val isMcp: Boolean get() = false
     val isLsp: Boolean get() = false
 
+    /**
+     * True only when this tool has a real implementation. Stubs return false
+     * so every frontend can distinguish real functionality from placeholders.
+     */
+    val isImplemented: Boolean get() = false
+
+    /**
+     * Decode the model-facing JSON object into the tool's typed input.
+     * Implemented tools must override this; stubs keep the default.
+     */
+    fun parseInput(input: Map<String, String>): Input =
+        throw UnsupportedOperationException("Tool '$name' does not accept agent input yet")
+
     fun isEnabled(): Boolean = true
     fun isConcurrencySafe(input: Input): Boolean = false
     fun isReadOnly(input: Input): Boolean = false
@@ -100,7 +113,7 @@ typealias Tools = List<Tool<*, *>>
 typealias CanUseToolFn = CanUseToolFunction
 
 interface CanUseToolFunction {
-    suspend operator fun invoke(tool: Tool<*, *>, input: Map<String, Any>, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String? = null): PermissionResult
+    suspend operator fun invoke(tool: Tool<*, *>, input: Any, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String? = null): PermissionResult
 }
 
 data class AgentDefinition(val name: String, val description: String, val prompt: String, val tools: List<String>? = null, val disallowedTools: List<String>? = null, val model: String? = null, val permissionMode: String? = null, val maxTurns: Int? = null)

@@ -3,12 +3,12 @@ package com.mimicryos.agent.permission
 import com.mimicryos.agent.core.*
 
 sealed class PermissionResult {
-    data class Allow(val input: Map<String, Any>? = null) : PermissionResult()
+    data class Allow(val input: Any? = null) : PermissionResult()
     data class Deny(val message: String, val code: String? = null) : PermissionResult()
     data class Ask(val message: String, val code: String? = null) : PermissionResult()
 
     companion object {
-        fun allow(input: Map<String, Any>? = null) = Allow(input)
+        fun allow(input: Any? = null) = Allow(input)
         fun deny(message: String, code: String? = null) = Deny(message, code)
         fun ask(message: String, code: String? = null) = Ask(message, code)
     }
@@ -17,7 +17,7 @@ sealed class PermissionResult {
 class PermissionSystem {
     private val denialTracking = DenialTrackingState()
 
-    suspend fun canUseTool(tool: Tool<*, *>, input: Map<String, Any>, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String? = null): PermissionResult {
+    suspend fun canUseTool(tool: Tool<*, *>, input: Any, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String? = null): PermissionResult {
         val permissionContext = context.options.toolPermissionContext
         if (forceDecision != null) return when (forceDecision) { "allow" -> PermissionResult.allow(input); "deny" -> PermissionResult.deny("Force denied"); else -> PermissionResult.ask("Force ask") }
         if (isDeniedByRules(tool, permissionContext)) { recordDenial(tool.name); return PermissionResult.deny("Tool ${tool.name} is denied by permission rules", "deny_rule") }
@@ -43,11 +43,11 @@ class PermissionSystem {
 
     private fun matchesPattern(name: String, pattern: String): Boolean = when { pattern.endsWith("*") -> name.startsWith(pattern.dropLast(1)); pattern.contains("*") -> { val p = pattern.split("*"); p.size == 2 && name.startsWith(p[0]) && name.endsWith(p[1]) }; else -> name == pattern }
 
-    private suspend fun checkAutoMode(tool: Tool<*, *>, input: Map<String, Any>, context: ToolUseContext): PermissionResult {
+    private suspend fun checkAutoMode(tool: Tool<*, *>, input: Any, context: ToolUseContext): PermissionResult {
         val typedTool = tool as Tool<Any, Any>
-        val classifierInput = typedTool.toAutoClassifierInput(input as Any)
+        val classifierInput = typedTool.toAutoClassifierInput(input)
         if (classifierInput as? String == "") return PermissionResult.allow(input)
-        return if (typedTool.isReadOnly(input as Any) && !typedTool.isDestructive(input as Any)) PermissionResult.allow(input) else PermissionResult.ask("Auto mode requires review for ${tool.name}", "auto_mode_review")
+        return if (typedTool.isReadOnly(input) && !typedTool.isDestructive(input)) PermissionResult.allow(input) else PermissionResult.ask("Auto mode requires review for ${tool.name}", "auto_mode_review")
     }
 
     private fun recordDenial(toolName: String) { denialTracking.count++; denialTracking.lastDenial = System.currentTimeMillis() }

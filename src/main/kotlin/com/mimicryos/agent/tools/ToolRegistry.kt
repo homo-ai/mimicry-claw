@@ -12,7 +12,13 @@ class ToolRegistry {
     fun unregister(name: String) { tools.remove(name); toolOrder.remove(name) }
     fun get(name: String): Tool<*, *>? = tools[name]
     fun getAll(): List<Tool<*, *>> = toolOrder.mapNotNull { tools[it] }
-    fun getEnabled(): List<Tool<*, *>> = getAll().filter { it.isEnabled() }
+
+    /**
+     * Only tools with a real implementation are exposed to the model.
+     * Stubs stay registered so frontends can list them as unimplemented,
+     * but the agent never advertises or calls them.
+     */
+    fun getEnabled(): List<Tool<*, *>> = getAll().filter { it.isEnabled() && it.isImplemented }
     fun filterByPermission(context: ToolPermissionContext): List<Tool<*, *>> = getAll().filter { !isDeniedByRules(it, context) }
 
     fun assembleToolPool(permissionContext: ToolPermissionContext, mcpTools: List<Tool<*, *>>): List<Tool<*, *>> {
@@ -34,15 +40,37 @@ class ToolRegistry {
     } }
 }
 
+private fun resolvePath(context: ToolUseContext, path: String): java.io.File {
+    val file = java.io.File(path)
+    return if (file.isAbsolute) file else java.io.File(context.options.cwd ?: System.getProperty("user.dir"), path)
+}
+
 object BashTool : Tool<BashInput, BashOutput> {
     override val name = "Bash"
     override val inputSchema = object : ToolInputSchema {}
     override val maxResultSizeChars = 80_000
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "command" to mapOf("type" to "string", "description" to "Shell command to execute"),
+            "description" to mapOf("type" to "string", "description" to "Short description of the command"),
+            "timeout" to mapOf("type" to "integer", "description" to "Timeout in milliseconds"),
+        ),
+        required = listOf("command"),
+    )
+
+    override fun parseInput(input: Map<String, String>): BashInput = BashInput(
+        command = input["command"] ?: error("Missing required field: command"),
+        description = input["description"] ?: "",
+        timeout = input["timeout"]?.toIntOrNull(),
+    )
+
+    override fun getToolUseSummary(input: BashInput): String = input.command.take(200)
     override suspend fun call(args: BashInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BashOutput> {
         return try {
             val timeoutMs = args.timeout?.toLong() ?: 60_000L
             val process = ProcessBuilder(args.command.split(" "))
-                .directory(java.io.File(System.getProperty("user.dir")))
+                .directory(java.io.File(context.options.cwd ?: System.getProperty("user.dir")))
                 .redirectErrorStream(false)
                 .start()
 
@@ -77,9 +105,27 @@ object FileReadTool : Tool<FileReadInput, FileReadOutput> {
     override val name = "Read"
     override val inputSchema = object : ToolInputSchema {}
     override val maxResultSizeChars = Int.MAX_VALUE
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "file_path" to mapOf("type" to "string", "description" to "Path to the file to read"),
+            "offset" to mapOf("type" to "integer", "description" to "1-based line number to start from"),
+            "limit" to mapOf("type" to "integer", "description" to "Maximum number of lines to read"),
+        ),
+        required = listOf("file_path"),
+    )
+
+    override fun parseInput(input: Map<String, String>): FileReadInput = FileReadInput(
+        file_path = input["file_path"] ?: error("Missing required field: file_path"),
+        offset = input["offset"]?.toIntOrNull(),
+        limit = input["limit"]?.toIntOrNull(),
+    )
+
+    override fun getPath(input: FileReadInput): String? = input.file_path
+    override fun getToolUseSummary(input: FileReadInput): String = input.file_path
     override suspend fun call(args: FileReadInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileReadOutput> {
         return try {
-            val file = java.io.File(args.file_path)
+            val file = resolvePath(context, args.file_path)
             if (!file.exists()) {
                 return ToolResult(FileReadOutput("Error: File not found: ${args.file_path}"))
             }
@@ -110,9 +156,25 @@ object FileReadTool : Tool<FileReadInput, FileReadOutput> {
 object FileWriteTool : Tool<FileWriteInput, FileWriteOutput> {
     override val name = "Write"
     override val inputSchema = object : ToolInputSchema {}
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "file_path" to mapOf("type" to "string", "description" to "Path to the file to write"),
+            "content" to mapOf("type" to "string", "description" to "Full file content"),
+        ),
+        required = listOf("file_path", "content"),
+    )
+
+    override fun parseInput(input: Map<String, String>): FileWriteInput = FileWriteInput(
+        file_path = input["file_path"] ?: error("Missing required field: file_path"),
+        content = input["content"] ?: error("Missing required field: content"),
+    )
+
+    override fun getPath(input: FileWriteInput): String? = input.file_path
+    override fun getToolUseSummary(input: FileWriteInput): String = input.file_path
     override suspend fun call(args: FileWriteInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileWriteOutput> {
         return try {
-            val file = java.io.File(args.file_path)
+            val file = resolvePath(context, args.file_path)
             file.parentFile?.mkdirs()
             file.writeText(args.content)
             ToolResult(FileWriteOutput(true))
@@ -131,9 +193,29 @@ object FileWriteTool : Tool<FileWriteInput, FileWriteOutput> {
 object FileEditTool : Tool<FileEditInput, FileEditOutput> {
     override val name = "Edit"
     override val inputSchema = object : ToolInputSchema {}
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "file_path" to mapOf("type" to "string", "description" to "Path to the file to edit"),
+            "old_string" to mapOf("type" to "string", "description" to "Exact text to replace"),
+            "new_string" to mapOf("type" to "string", "description" to "Replacement text"),
+            "replace_all" to mapOf("type" to "boolean", "description" to "Replace every occurrence"),
+        ),
+        required = listOf("file_path", "old_string", "new_string"),
+    )
+
+    override fun parseInput(input: Map<String, String>): FileEditInput = FileEditInput(
+        file_path = input["file_path"] ?: error("Missing required field: file_path"),
+        old_string = input["old_string"] ?: error("Missing required field: old_string"),
+        new_string = input["new_string"] ?: error("Missing required field: new_string"),
+        replace_all = input["replace_all"]?.toBooleanStrictOrNull() ?: false,
+    )
+
+    override fun getPath(input: FileEditInput): String? = input.file_path
+    override fun getToolUseSummary(input: FileEditInput): String = input.file_path
     override suspend fun call(args: FileEditInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<FileEditOutput> {
         return try {
-            val file = java.io.File(args.file_path)
+            val file = resolvePath(context, args.file_path)
             if (!file.exists()) {
                 return ToolResult(FileEditOutput(false, listOf("Error: File not found: ${args.file_path}")))
             }
@@ -164,9 +246,24 @@ object FileEditTool : Tool<FileEditInput, FileEditOutput> {
 object GlobTool : Tool<GlobInput, GlobOutput> {
     override val name = "Glob"
     override val inputSchema = object : ToolInputSchema {}
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "pattern" to mapOf("type" to "string", "description" to "Glob pattern, e.g. **/*.kt"),
+            "path" to mapOf("type" to "string", "description" to "Directory to search (default: .)"),
+        ),
+        required = listOf("pattern"),
+    )
+
+    override fun parseInput(input: Map<String, String>): GlobInput = GlobInput(
+        pattern = input["pattern"] ?: error("Missing required field: pattern"),
+        path = input["path"] ?: ".",
+    )
+
+    override fun getToolUseSummary(input: GlobInput): String = "${input.pattern} in ${input.path}"
     override suspend fun call(args: GlobInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<GlobOutput> {
         return try {
-            val baseDir = java.io.File(args.path)
+            val baseDir = resolvePath(context, args.path)
             if (!baseDir.exists() || !baseDir.isDirectory) {
                 return ToolResult(GlobOutput(emptyList()))
             }
@@ -204,10 +301,27 @@ object GlobTool : Tool<GlobInput, GlobOutput> {
 object GrepTool : Tool<GrepInput, GrepOutput> {
     override val name = "Grep"
     override val inputSchema = object : ToolInputSchema {}
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "pattern" to mapOf("type" to "string", "description" to "Regular expression to search for"),
+            "path" to mapOf("type" to "string", "description" to "Directory to search (default: .)"),
+            "include" to mapOf("type" to "string", "description" to "File name filter regex"),
+        ),
+        required = listOf("pattern"),
+    )
+
+    override fun parseInput(input: Map<String, String>): GrepInput = GrepInput(
+        pattern = input["pattern"] ?: error("Missing required field: pattern"),
+        path = input["path"] ?: ".",
+        include = input["include"],
+    )
+
+    override fun getToolUseSummary(input: GrepInput): String = "${input.pattern} in ${input.path}"
     override suspend fun call(args: GrepInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<GrepOutput> {
         return try {
             val regex = try { Regex(args.pattern) } catch (e: Exception) { return ToolResult(GrepOutput(emptyList())) }
-            val baseDir = java.io.File(args.path)
+            val baseDir = resolvePath(context, args.path)
             if (!baseDir.exists() || !baseDir.isDirectory) {
                 return ToolResult(GrepOutput(emptyList()))
             }

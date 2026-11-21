@@ -19,6 +19,7 @@ class MimicryAgent(private val config: AgentConfig, private val registry: ModelR
     private val fileStateCache = FileStateCache()
     private var currentSessionId: String = sessionManager.createSession()
     private val activeTasks = ConcurrentHashMap<String, TaskStateEntry>()
+    @Volatile private var activeQueryEngine: QueryEngine? = null
 
     suspend fun submit(prompt: String): String {
         val userMessage = Message.User(uuid = generateUuid(), message = UserMessage("user", Content.Text(prompt)))
@@ -28,15 +29,20 @@ class MimicryAgent(private val config: AgentConfig, private val registry: ModelR
         val provider = registry.getProvider(config.providerId) ?: error("Provider not found: ${config.providerId}")
         val model = config.model
         val toolPermissionContext = createPermissionContext()
-        val toolUseContext = ToolUseContext(options = ToolOptions(mainLoopModel = model, tools = toolRegistry.getEnabled(), thinkingConfig = ThinkingConfig(type = "adaptive"), agentDefinitions = AgentDefinitionsResult(emptyList(), emptyList()), isNonInteractiveSession = true, mcpClients = mcpManager.getClients()), abortController = AbortController(), readFileState = fileStateCache, getAppState = { createAppState() }, setAppState = { _ -> }, messages = messages)
-        val canUseTool: CanUseToolFn = object : CanUseToolFn { override suspend fun invoke(tool: Tool<*, *>, input: Map<String, Any>, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String?): PermissionResult = permissionSystem.canUseTool(tool, input, context, assistantMessage, toolUseID, forceDecision) }
+        val toolUseContext = ToolUseContext(options = ToolOptions(mainLoopModel = model, tools = toolRegistry.getEnabled(), thinkingConfig = ThinkingConfig(type = "adaptive"), agentDefinitions = AgentDefinitionsResult(emptyList(), emptyList()), isNonInteractiveSession = true, mcpClients = mcpManager.getClients(), cwd = config.cwd), abortController = AbortController(), readFileState = fileStateCache, getAppState = { createAppState() }, setAppState = { _ -> }, messages = messages)
+        val canUseTool: CanUseToolFn = object : CanUseToolFn { override suspend fun invoke(tool: Tool<*, *>, input: Any, context: ToolUseContext, assistantMessage: Message.Assistant, toolUseID: String, forceDecision: String?): PermissionResult = permissionSystem.canUseTool(tool, input, context, assistantMessage, toolUseID, forceDecision) }
         val queryEngine = QueryEngine(QueryEngine.QueryEngineConfig(sessionId = currentSessionId, cwd = config.cwd, tools = toolRegistry.getEnabled(), commands = emptyList(), mcpClients = mcpManager.getClients(), agents = emptyList(), canUseTool = canUseTool, getAppState = { createAppState() }, setAppState = { _ -> }, mainLoopModel = model, providerId = config.providerId, registry = registry, readFileCache = fileStateCache, userSpecifiedModel = model, maxTurns = config.maxTurns, verbose = config.verbose))
-        val result = queryEngine.submitMessage(prompt).run()
-        val lastMessage = result.lastOrNull()
-        return when (lastMessage) { is Message.Assistant -> (lastMessage.message.content.lastOrNull() as? ContentBlock.Text)?.text ?: ""; is Message.User -> "Task completed"; else -> "" }
+        activeQueryEngine = queryEngine
+        try {
+            val result = queryEngine.submitMessage(prompt).run()
+            val lastMessage = result.lastOrNull()
+            return when (lastMessage) { is Message.Assistant -> (lastMessage.message.content.lastOrNull() as? ContentBlock.Text)?.text ?: ""; is Message.User -> "Task completed"; else -> "" }
+        } finally {
+            activeQueryEngine = null
+        }
     }
 
-    fun interrupt() { activeTasks.values.forEach {} }
+    fun interrupt() { activeQueryEngine?.interrupt() }
     fun getSessionId(): String = currentSessionId
     fun getMessages(): List<Message> = messages.toList()
     suspend fun loadSession(sessionId: String) { currentSessionId = sessionId; messages.clear(); messages.addAll(sessionManager.loadMessages(sessionId)) }

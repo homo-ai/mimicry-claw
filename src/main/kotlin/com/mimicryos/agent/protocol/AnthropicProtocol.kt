@@ -14,6 +14,11 @@ private fun anyToJsonElement(value: Any): JsonElement = when (value) {
     else -> JsonPrimitive(value.toString())
 }
 
+private fun jsonValueToString(value: JsonElement): String = when (value) {
+    is JsonPrimitive -> value.content
+    else -> value.toString()
+}
+
 class AnthropicProtocol(
     private val baseUrl: String = "https://api.anthropic.com",
     private val apiVersion: String = "2023-06-01",
@@ -84,8 +89,12 @@ class AnthropicProtocol(
                 when (b["type"]?.jsonPrimitive?.content) {
                     "text" -> contentBlocks.add(APIContentBlock.Text(b["text"]?.jsonPrimitive?.content ?: ""))
                     "tool_use" -> {
-                        val input = b["input"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap()
-                        contentBlocks.add(APIContentBlock.ToolUse(b["id"]?.jsonPrimitive?.content ?: "", b["name"]?.jsonPrimitive?.content ?: "", input))
+                        val input = (b["input"] as? JsonObject)?.mapValues { jsonValueToString(it.value) } ?: emptyMap()
+                        contentBlocks.add(APIContentBlock.ToolUse(
+                            (b["id"] as? JsonPrimitive)?.content ?: "",
+                            (b["name"] as? JsonPrimitive)?.content ?: "",
+                            input,
+                        ))
                     }
                     "thinking" -> contentBlocks.add(APIContentBlock.Thinking(b["thinking"]?.jsonPrimitive?.content ?: "", b["signature"]?.jsonPrimitive?.content))
                 }
@@ -172,10 +181,10 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
     }
 
     private fun buildApiMessage(msg: APIMessage): JsonObject = buildJsonObject {
-        put("role", msg.role)
         val contentBlocks = msg.content.filterIsInstance<APIContentBlock.Text>()
         val toolUseBlocks = msg.content.filterIsInstance<APIContentBlock.ToolUse>()
         val toolResultBlocks = msg.content.filterIsInstance<APIContentBlock.ToolResult>()
+        put("role", if (toolResultBlocks.isNotEmpty()) "tool" else msg.role)
 
         if (contentBlocks.isNotEmpty()) {
             put("content", buildJsonArray { contentBlocks.forEach { add(it.text) } })
@@ -188,7 +197,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
                         put("type", "function")
                         put("function", buildJsonObject {
                             put("name", block.name)
-                            put("input", buildJsonObject { block.input.forEach { (k, v) -> put(k, v) } })
+                            put("arguments", buildJsonObject { block.input.forEach { (k, v) -> put(k, v) } }.toString())
                         })
                     })
                 }
@@ -219,7 +228,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
             val choices = obj["choices"]?.jsonArray ?: return emptyList()
             val choice = choices.firstOrNull()?.jsonObject ?: return emptyList()
             val message = choice["message"]?.jsonObject
-            val finishReason = choice["finishReason"]?.jsonPrimitive?.content
+            val finishReason = choice["finish_reason"]?.jsonPrimitive?.content
 
             val content = message?.get("content")?.jsonPrimitive?.content ?: ""
             val toolCalls: MutableList<QueryEngine.ToolCall> = mutableListOf()
@@ -278,7 +287,7 @@ class OpenAIChatProtocol(private val baseUrl: String = "https://api.openai.com/v
                 val choices = obj["choices"]?.jsonArray ?: continue
                 val choice = choices.firstOrNull()?.jsonObject ?: continue
                 val delta = choice["delta"]?.jsonObject
-                val finishReason = choice["finishReason"]?.jsonPrimitive?.content
+                val finishReason = choice["finish_reason"]?.jsonPrimitive?.content
                 val content = delta?.get("content")?.jsonPrimitive?.content
                 val toolCalls: MutableList<QueryEngine.ToolCall> = mutableListOf()
                 delta?.get("tool_calls")?.jsonArray?.forEach { tc ->
