@@ -44,6 +44,24 @@ data class SessionSummary(
 )
 
 @Serializable
+data class TranscriptMessage(
+    val id: String,
+    val role: String,
+    val text: String,
+    val timestamp: Long,
+    val toolUseId: String? = null,
+    val toolName: String? = null,
+    val isError: Boolean = false,
+)
+
+@Serializable
+data class SessionTranscript(
+    val sessionId: String,
+    val messages: List<TranscriptMessage>,
+    val lastEventSeq: Long,
+)
+
+@Serializable
 data class ProviderInfo(
     val id: String,
     val name: String,
@@ -148,7 +166,9 @@ interface ApplicationService {
     fun interrupt(taskId: String? = null): Boolean
     suspend fun respondToPermission(requestId: String, approved: Boolean, reason: String? = null): Boolean
 
+    suspend fun createSession(): SessionSummary
     suspend fun resumeSession(sessionId: String): SessionSummary?
+    fun sessionTranscript(sessionId: String): SessionTranscript?
     fun listSessions(): List<SessionSummary>
 
     fun setModel(model: String)

@@ -63,9 +63,91 @@ jobs:
           path: build/libs/mimicry-claw-1.0.0.jar
           if-no-files-found: error
 
+  build-gui:
+    name: Test desktop on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - uses: actions/download-artifact@v4
+        with:
+          name: mimicry-claw-jar
+          path: build/libs/
+      - name: Build GUI
+        run: dotnet build gui/Mimicry.Gui/Mimicry.Gui.csproj -c Release
+      - name: GUI and protocol tests
+        run: dotnet test gui/Mimicry.Gui.Tests/Mimicry.Gui.Tests.csproj -c Release --results-directory gui/Mimicry.Gui.Tests/TestResults --logger "trx;LogFileName=gui-tests.trx"
+      - name: Test against the actual Kotlin runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1
+          export DOTNET_NOLOGO=1
+          home=$(mktemp -d)
+          project=$(mktemp -d)
+          home_native="$home"
+          project_native="$project"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            home_native=$(cygpath -w "$home")
+            project_native=$(cygpath -w "$project")
+          fi
+          java -Duser.home="$home_native" -jar "$JAR" serve --cwd "$project_native" > runtime-smoke.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 100); do
+            [ -f "$home/.mimicry/runtime.json" ] && break
+            kill -0 "$pid" || { cat runtime-smoke.log; exit 1; }
+            sleep 0.1
+          done
+          test -f "$home/.mimicry/runtime.json"
+          MIMICRY_TEST_RUNTIME_FILE="$home_native/.mimicry/runtime.json" dotnet test gui/Mimicry.Gui.Tests/Mimicry.Gui.Tests.csproj -c Release --no-build --filter FullyQualifiedName~LiveRuntime
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-test-results-${{ matrix.os }}
+          path: gui/Mimicry.Gui.Tests/TestResults/
+    needs: build-jar
+
+  publish-gui:
+    name: Publish desktop ${{ matrix.target }}
+    needs: build-gui
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: windows-x64, rid: win-x64}
+          - {target: windows-arm64, rid: win-arm64}
+          - {target: linux-x64, rid: linux-x64}
+          - {target: linux-arm64, rid: linux-arm64}
+          - {target: macos-x64, rid: osx-x64}
+          - {target: macos-arm64, rid: osx-arm64}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish self-contained GUI
+        run: dotnet publish gui/Mimicry.Gui/Mimicry.Gui.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=false -o gui/publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.target }}
+          path: gui/publish/
+          if-no-files-found: error
+
   package:
     name: Package ${{ matrix.target }}
-    needs: build-jar
+    needs: [build-jar, publish-gui]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -108,6 +190,12 @@ jobs:
           name: mimicry-claw-jar
           path: build/libs/
 
+      - name: Download desktop frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: gui-${{ matrix.target }}
+          path: desktop/
+
       - name: Assemble package
         env:
           TARGET: ${{ matrix.target }}
@@ -120,6 +208,9 @@ jobs:
           dir="pkg-${TARGET}"
           mkdir -p "$dir"
           cp "$JAR" "$dir/"
+          mkdir -p "$dir/gui"
+          cp -R desktop/. "$dir/gui/"
+          if [ -f "$dir/gui/Mimicry.Gui" ]; then chmod +x "$dir/gui/Mimicry.Gui"; fi
 
           if [ "$LAUNCHER" = "run.bat" ]; then
             printf '%s\r\n' \
@@ -150,6 +241,9 @@ jobs:
             'Commands:' \
             '  run --help                 Show all commands' \
             '  run tui                    Interactive TUI' \
+            '  run gui                    Open desktop GUI (runtime auto-start/attach)' \
+            'GUI is self-contained; .NET installation is not required.' \
+            'Closing the GUI leaves tasks running. Runtime shutdown is an explicit action.' \
             '  run exec "your prompt"     One-shot task' \
             '  run serve                  Start the local runtime (HTTP + SSE)' \
             '  run status                 Show runtime status' \
@@ -168,7 +262,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish v1.0.0
+    name: Publish desktop preview
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: package
     runs-on: ubuntu-latest
     permissions:
@@ -185,7 +280,14 @@ jobs:
       - name: Write release notes
         run: |
           cat > release_notes.md << 'NOTES_EOF'
-          ## Mimicry Claw v1.0.0
+          ## Mimicry Claw Desktop Preview
+
+          Avalonia desktop client sharing the Kotlin runtime. Self-contained .NET frontend.
+          Includes sessions/transcript, task status, structured tool activity and permission approval.
+          Closing/quitting the GUI leaves the runtime running. Runtime shutdown is a separate confirmed action.
+          The Terminal panel is a real command-output runner, not a PTY emulator.
+          Skills/MCP/subagent/plan execution remain unintegrated; unimplemented tools remain explicitly marked.
+          ARM64 packages are cross-published; native window-manager behaviour still requires manual device testing.
 
           ### Requirements
           - **Java 21 JDK** on every platform
@@ -197,6 +299,7 @@ jobs:
           ```
           run --help                 Show all commands
           run tui                    Interactive TUI (Normal / Full Screen)
+          run gui                    Open GUI, auto-start or attach to local runtime
           run exec "your prompt"     One-shot task
           run serve                  Start the local runtime (HTTP + SSE)
           run status                 Show runtime status
@@ -224,14 +327,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh release delete v1.0.0 --yes --cleanup-tag || true
-          gh release create v1.0.0 \
-            --title "Mimicry Claw v1.0.0" \
-            --notes-file release_notes.md \
-            --latest \
-            artifacts/mimicry-claw-windows-x64/mimicry-claw-windows-x64.zip \
-            artifacts/mimicry-claw-windows-arm64/mimicry-claw-windows-arm64.zip \
-            artifacts/mimicry-claw-linux-x64/mimicry-claw-linux-x64.zip \
-            artifacts/mimicry-claw-linux-arm64/mimicry-claw-linux-arm64.zip \
-            artifacts/mimicry-claw-macos-x64/mimicry-claw-macos-x64.zip \
-            artifacts/mimicry-claw-macos-arm64/mimicry-claw-macos-arm64.zip
+          tag="desktop-preview-${GITHUB_SHA:0:7}"
+          assets=(artifacts/mimicry-claw-*/mimicry-claw-*.zip)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes-file release_notes.md
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" \
+              --title "Mimicry Claw Desktop Preview (${GITHUB_SHA:0:7})" \
+              --notes-file release_notes.md --prerelease "${assets[@]}"
+          fi

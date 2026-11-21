@@ -136,6 +136,10 @@ class MimicryApplicationService(
             throw IllegalStateException("No model configured for provider '$providerId'")
         }
 
+        request.sessionId?.let { id ->
+            require(validSessionId(id)) { "Invalid session id" }
+            require(components.sessionManager.getSessionInfo(id) != null) { "Session not found: $id" }
+        }
         val hadSession = request.sessionId != null || activeSessionId != null
         val sessionId = request.sessionId
             ?: activeSessionId
@@ -192,7 +196,66 @@ class MimicryApplicationService(
     override suspend fun respondToPermission(requestId: String, approved: Boolean, reason: String?): Boolean =
         permissionBroker.resolve(requestId, approved)
 
+    override suspend fun createSession(): SessionSummary {
+        check(!closed) { "Runtime is shut down" }
+        val id = components.sessionManager.createSession()
+        components.sessionManager.saveMessages(id, emptyList())
+        activeSessionId = id
+        eventBus.emit(AgentEvent.SessionCreated(id, config.projectDir))
+        val info = requireNotNull(components.sessionManager.getSessionInfo(id))
+        return SessionSummary(id, info.createdAt, info.lastActiveAt, 0, config.projectDir)
+    }
+
+    override fun sessionTranscript(sessionId: String): SessionTranscript? {
+        if (!validSessionId(sessionId)) return null
+        // Read the watermark before the transcript; replay after this point may
+        // overlap persisted messages, which clients deduplicate by message id.
+        val watermark = eventBus.lastSeq()
+        components.sessionManager.getSessionInfo(sessionId) ?: return null
+        val result = mutableListOf<TranscriptMessage>()
+        components.sessionManager.loadMessages(sessionId).forEach { msg ->
+            when (msg) {
+                is Message.User -> when (val content = msg.message.content) {
+                    is Content.Text -> result.add(TranscriptMessage(msg.uuid, "user", content.text, msg.timestamp))
+                    is Content.ToolResult -> result.add(TranscriptMessage(
+                        msg.uuid, "tool", content.content.filterIsInstance<ResultContent.Text>().joinToString("\n") { it.text },
+                        msg.timestamp, content.toolUseId, isError = content.isError,
+                    ))
+                    else -> Unit
+                }
+                is Message.Assistant -> {
+                    val text = msg.message.content.filterIsInstance<ContentBlock.Text>().joinToString("\n") { it.text }
+                    if (text.isNotEmpty()) result.add(TranscriptMessage(msg.uuid, "assistant", text, msg.timestamp))
+                    msg.message.content.filterIsInstance<ContentBlock.ToolUse>().forEach { tool ->
+                        result.add(TranscriptMessage(tool.id, "tool_call", tool.input.toString(), msg.timestamp, tool.id, tool.name))
+                    }
+                }
+                else -> Unit
+            }
+        }
+        // Include in-flight events, so closing/reopening the GUI mid-task does
+        // not lose already emitted output. Persisted entries win for final text.
+        val sessionTasks = tasks.values.filter { it.sessionId == sessionId }.map { it.id }.toSet()
+        eventBus.history().forEach { envelope ->
+            when (val event = envelope.event) {
+                is AgentEvent.MessageEvent -> if (event.taskId in sessionTasks && result.none { it.id == event.messageId })
+                    result.add(TranscriptMessage(event.messageId, event.role, event.text, envelope.timestamp))
+                is AgentEvent.ToolStarted -> if (event.taskId in sessionTasks && result.none { it.id == event.toolUseId })
+                    result.add(TranscriptMessage(event.toolUseId, "tool_call", event.input.toString(), envelope.timestamp, event.toolUseId, event.toolName))
+                is AgentEvent.ToolCompleted -> if (event.taskId in sessionTasks && result.none { it.toolUseId == event.toolUseId && it.role == "tool" })
+                    result.add(TranscriptMessage("result-${event.toolUseId}", "tool", event.output, envelope.timestamp, event.toolUseId, event.toolName, event.isError))
+                is AgentEvent.ToolFailed -> if (event.taskId in sessionTasks && result.none { it.toolUseId == event.toolUseId && it.role == "tool" })
+                    result.add(TranscriptMessage("result-${event.toolUseId}", "tool", event.error, envelope.timestamp, event.toolUseId, event.toolName, true))
+                else -> Unit
+            }
+        }
+        return SessionTranscript(sessionId, result.sortedBy { it.timestamp }, watermark)
+    }
+
+    private fun validSessionId(id: String): Boolean = id.matches(Regex("[A-Za-z0-9_-]{1,100}"))
+
     override suspend fun resumeSession(sessionId: String): SessionSummary? {
+        if (!validSessionId(sessionId)) return null
         val info = components.sessionManager.getSessionInfo(sessionId) ?: return null
         val messages = components.sessionManager.loadMessages(sessionId)
         activeSessionId = sessionId
@@ -258,7 +321,9 @@ class MimicryApplicationService(
                 abortControllers[taskId] = abort
                 val current = tasks[taskId] ?: initial
                 val engine = buildEngine(current, abort)
-                val stream = engine.submitMessage(current.prompt)
+                val userMessageId = UUID.randomUUID().toString()
+                eventBus.emit(AgentEvent.MessageEvent(taskId, userMessageId, "user", current.prompt))
+                val stream = engine.submitMessage(current.prompt, QueryEngine.SubmitOptions(uuid = userMessageId))
                 val messages = withTimeout(config.taskTimeoutMs) { stream.run() }
                 components.sessionManager.saveMessages(current.sessionId, messages)
 
@@ -347,13 +412,18 @@ class MimicryApplicationService(
                 if (isReadOnly(tool, input)) return PermissionResult.allow(input)
 
                 val target = describeTarget(tool, input)
-                val approved = permissionBroker.request(
-                    taskId = task.id,
-                    toolName = tool.name,
-                    target = target,
-                    reason = result.message,
-                    scope = "tool:${tool.name}",
-                )
+                updateTask(task.id) { it.copy(status = TaskRunStatus.WAITING_PERMISSION) }
+                val approved = try {
+                    permissionBroker.request(
+                        taskId = task.id,
+                        toolName = tool.name,
+                        target = target,
+                        reason = result.message,
+                        scope = "tool:${tool.name}",
+                    )
+                } finally {
+                    updateTask(task.id) { if (it.status == TaskRunStatus.WAITING_PERMISSION) it.copy(status = TaskRunStatus.RUNNING) else it }
+                }
                 return if (approved) {
                     PermissionResult.allow(input)
                 } else {

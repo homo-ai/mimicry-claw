@@ -1,0 +1,267 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Mimicry.Gui.ViewModels"
+        x:Class="Mimicry.Gui.Views.MainWindow" x:CompileBindings="False"
+        Title="Mimicry" Width="1280" Height="850" MinWidth="640" MinHeight="480"
+        SystemDecorations="None" CanResize="True">
+  <Window.DataTemplates>
+    <DataTemplate DataType="{x:Type vm:MessageItem}">
+      <Border Classes="card" Margin="0,0,0,10">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding Role}" Classes="caption" FontWeight="SemiBold" />
+          <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vm:ToolActivityItem}">
+      <Border Classes="card" Margin="0,0,0,10" Padding="8">
+        <Expander Header="{Binding Header}" HorizontalAlignment="Stretch">
+          <StackPanel Spacing="10" Margin="10">
+            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+            <TextBlock Text="Input" Classes="caption" />
+            <SelectableTextBlock Text="{Binding Input}" TextWrapping="Wrap" FontFamily="Consolas, monospace" />
+            <TextBlock Text="Progress / output" Classes="caption" />
+            <SelectableTextBlock Text="{Binding Output}" TextWrapping="Wrap" FontFamily="Consolas, monospace" />
+          </StackPanel>
+        </Expander>
+      </Border>
+    </DataTemplate>
+    <DataTemplate DataType="vm:PermissionItem">
+      <Border Classes="card" Padding="12" Margin="0,0,0,10">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding ToolName}" FontWeight="SemiBold" />
+          <SelectableTextBlock Text="{Binding Target}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Reason}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Scope}" Classes="caption" />
+          <TextBlock Text="{Binding Status}" Classes="caption" TextWrapping="Wrap" />
+          <WrapPanel Orientation="Horizontal">
+            <Button Content="Approve" Margin="0,0,6,4" IsEnabled="{Binding CanRespond}"
+                    Command="{Binding $parent[Window].DataContext.ApproveCommand}" CommandParameter="{Binding}" />
+            <Button Content="Deny" Margin="0,0,0,4" IsEnabled="{Binding CanRespond}"
+                    Command="{Binding $parent[Window].DataContext.DenyCommand}" CommandParameter="{Binding}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </Window.DataTemplates>
+  <Border BorderBrush="#D2DCE8" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+    <Grid RowDefinitions="46,Auto,*,Auto">
+      <Border Grid.Row="0" Background="#EAF0F7" BorderBrush="#DCE4EE" BorderThickness="0,0,0,1"
+              PointerPressed="TitleBarPointerPressed">
+        <Grid ColumnDefinitions="100,Auto,*,Auto" Margin="16,0">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Name="CloseButton" Classes="traffic" Background="#FF6058" ToolTip.Tip="Close GUI (runtime stays running)" AutomationProperties.Name="Close GUI" Click="CloseClicked" />
+            <Button Name="MinimizeButton" Classes="traffic" Background="#FFBD2E" ToolTip.Tip="Minimize" AutomationProperties.Name="Minimize" Click="MinimizeClicked" />
+            <Button Name="MaximizeButton" Classes="traffic" Background="#28C840" ToolTip.Tip="Maximize / restore (not fullscreen)" AutomationProperties.Name="Maximize or restore" Click="MaximizeClicked" />
+          </StackPanel>
+          <TextBlock Grid.Column="1" Text="Mimicry" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,20,0" />
+          <Menu Grid.Column="2" VerticalAlignment="Center" Background="Transparent">
+            <MenuItem Header="File">
+              <MenuItem Header="New session" Command="{Binding NewSessionCommand}" />
+              <MenuItem Header="Reconnect" Command="{Binding ReconnectCommand}" />
+              <Separator />
+              <MenuItem Name="ShutdownRuntimeMenu" Header="Shutdown Runtime…" Click="ShutdownClicked" />
+              <MenuItem Header="Exit GUI (keep runtime running)" Click="CloseClicked" />
+            </MenuItem>
+            <MenuItem Header="View">
+              <MenuItem Header="Overview" Command="{Binding NavigateCommand}" CommandParameter="Overview" />
+              <MenuItem Header="Conversation" Command="{Binding NavigateCommand}" CommandParameter="Conversation" />
+              <MenuItem Header="Tool Activity" Command="{Binding NavigateCommand}" CommandParameter="Tool Activity" />
+              <MenuItem Header="Toggle output panel" Command="{Binding ToggleBottomCommand}" />
+              <Separator />
+              <MenuItem Name="FullscreenMenu" Header="Enter / leave fullscreen" Click="FullscreenClicked" />
+            </MenuItem>
+          </Menu>
+          <TextBlock Grid.Column="3" Text="{Binding ConnectionStatus}" Classes="caption" VerticalAlignment="Center" MaxWidth="300" TextTrimming="CharacterEllipsis" />
+        </Grid>
+      </Border>
+      <Border Grid.Row="1" Background="#F9FBFD" BorderBrush="#DFE6EF" BorderThickness="0,0,0,1" Padding="14,8">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2">
+            <TextBlock Text="{Binding CurrentPage}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ProjectDir}" Classes="caption" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+          <WrapPanel Grid.Column="1" Orientation="Horizontal">
+            <Button Content="New session" Command="{Binding NewSessionCommand}" Margin="0,0,6,0" />
+            <Button Content="Interrupt task" Command="{Binding InterruptCommand}" Margin="0,0,6,0" />
+            <Button Content="Reconnect" Command="{Binding ReconnectCommand}" />
+          </WrapPanel>
+        </Grid>
+      </Border>
+      <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+        <Grid Name="BodyGrid" MinWidth="740" RowDefinitions="*,5,220">
+          <Grid Grid.Row="0" ColumnDefinitions="180,5,*,5,250">
+            <Border Grid.Column="0" Background="#EDF2F8" Padding="12">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="WORKSPACE" Classes="caption" Margin="10,10,0,8" />
+                  <Button Classes="nav" Content="Overview" Command="{Binding NavigateCommand}" CommandParameter="Overview" />
+                  <Button Classes="nav" Content="Conversation" Command="{Binding NavigateCommand}" CommandParameter="Conversation" />
+                  <Button Classes="nav" Content="Tool Activity" Command="{Binding NavigateCommand}" CommandParameter="Tool Activity" />
+                  <TextBlock Text="SESSIONS" Classes="caption" Margin="10,20,0,8" />
+                  <ListBox Name="SessionsList" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession, Mode=TwoWay}"
+                           Background="Transparent" BorderThickness="0" MinHeight="70" MaxHeight="400">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Spacing="3">
+                          <TextBlock Text="{Binding Id}" TextTrimming="CharacterEllipsis" MaxWidth="145" />
+                          <TextBlock Text="{Binding MessageCount, StringFormat='{}{0} messages'}" Classes="caption" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <Button Content="Resume selected" Command="{Binding ResumeSessionCommand}" />
+                  <TextBlock Text="Select a session and resume to load its history." TextWrapping="Wrap" Classes="caption" Margin="8" />
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+            <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="#DCE4EF" />
+            <Grid Grid.Column="2" RowDefinitions="*,Auto" Margin="18,14">
+              <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                  <StackPanel IsVisible="{Binding IsOverview}" Spacing="14">
+                    <TextBlock Text="Overview" Classes="heading" />
+                    <TextBlock Text="A workspace connected to your existing Mimicry runtime." TextWrapping="Wrap" Classes="caption" />
+                    <Border Classes="card">
+                      <StackPanel Spacing="10">
+                        <TextBlock Text="Runtime" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding ConnectionStatus}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding RuntimeId}" Classes="caption" TextWrapping="Wrap" />
+                        <SelectableTextBlock Text="{Binding ProjectDir}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding ApiKeyStatus}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding RunningTaskId, StringFormat='Running task: {0}'}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding PendingPermissionCount, StringFormat='Pending permissions: {0}'}" />
+                      </StackPanel>
+                    </Border>
+                    <Border Classes="card">
+                      <StackPanel Spacing="10">
+                        <TextBlock Text="Tasks" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="Only tasks reported by the runtime are shown." Classes="caption" TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Tasks}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border BorderBrush="#E5EBF3" BorderThickness="0,0,0,1" Padding="0,8">
+                                <StackPanel Spacing="4">
+                                  <TextBlock Text="{Binding Status}" FontWeight="SemiBold" />
+                                  <SelectableTextBlock Text="{Binding Prompt}" TextWrapping="Wrap" />
+                                  <TextBlock Text="{Binding SessionId}" Classes="caption" TextWrapping="Wrap" />
+                                </StackPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Border>
+                    <Border Classes="card">
+                      <StackPanel Spacing="8">
+                        <TextBlock Text="Agents" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Agents}">
+                          <ItemsControl.ItemTemplate><DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4">
+                              <TextBlock Text="{Binding Name}" />
+                              <TextBlock Text="{Binding Status}" Classes="caption" />
+                            </StackPanel>
+                          </DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                  <StackPanel IsVisible="{Binding IsConversation}" Spacing="10">
+                    <TextBlock Text="Conversation" Classes="heading" />
+                    <TextBlock Text="{Binding ActiveSessionId}" Classes="caption" TextWrapping="Wrap" />
+                    <TextBlock Text="History and live messages are merged by message ID; no synthetic assistant response is shown." Classes="caption" TextWrapping="Wrap" />
+                    <ItemsControl Name="MessagesList" ItemsSource="{Binding Messages}" />
+                  </StackPanel>
+                  <StackPanel IsVisible="{Binding IsActivity}" Spacing="10">
+                    <TextBlock Text="Tool Activity" Classes="heading" />
+                    <TextBlock Text="Expand a runtime-reported tool to inspect input, progress, and output." Classes="caption" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding ToolActivity}" />
+                  </StackPanel>
+                </Grid>
+              </ScrollViewer>
+              <Border Grid.Row="1" Classes="card" Padding="10" Margin="0,12,0,0">
+                <StackPanel Spacing="8">
+                  <TextBox Name="PromptBox" Text="{Binding Prompt, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap"
+                           MinHeight="68" MaxHeight="140" Watermark="Message the runtime…" KeyDown="PromptKeyDown" />
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Enter sends · Shift+Enter newline · Esc releases focus" Classes="caption" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button Name="SendButton" Grid.Column="1" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding IsConnected}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+            </Grid>
+            <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="#DCE4EF" />
+            <Border Grid.Column="4" Background="#F7FAFD" Padding="14">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="Inspector" FontWeight="SemiBold" FontSize="16" />
+                  <TextBlock Text="Provider" Classes="caption" />
+                  <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Content="Apply provider" Command="{Binding ApplyProviderCommand}" />
+                  <TextBlock Text="{Binding ProviderId}" Classes="caption" TextWrapping="Wrap" />
+                  <TextBlock Text="Model" Classes="caption" />
+                  <TextBox Text="{Binding ModelInput, Mode=TwoWay}" Watermark="Runtime model identifier" />
+                  <Button Content="Apply model" Command="{Binding ApplyModelCommand}" />
+                  <TextBlock Text="{Binding Model}" Classes="caption" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding ApiKeyStatus}" TextWrapping="Wrap" Classes="caption" />
+                  <Separator />
+                  <TextBlock Text="Permissions" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding PermissionMode}" Classes="caption" />
+                  <TextBlock Text="Approval is explicit and applies only to the displayed runtime request." Classes="caption" TextWrapping="Wrap" />
+                  <ItemsControl Name="PermissionsList" ItemsSource="{Binding Permissions}" />
+                  <Separator />
+                  <TextBlock Text="Plan" FontWeight="SemiBold" />
+                  <SelectableTextBlock Text="{Binding PlanText}" TextWrapping="Wrap" />
+                  <Expander Header="Runtime tools">
+                    <ItemsControl ItemsSource="{Binding AvailableTools}">
+                      <ItemsControl.ItemTemplate><DataTemplate>
+                        <StackPanel Spacing="4" Margin="0,6">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Classes="caption" />
+                          <TextBlock Text="{Binding Implemented, StringFormat='Implemented: {0}'}" Classes="caption" />
+                        </StackPanel>
+                      </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Expander>
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+          </Grid>
+          <GridSplitter Name="BottomSplitter" Grid.Row="1" ResizeDirection="Rows" Background="#D7E1EE" IsVisible="{Binding BottomVisible}" />
+          <Border Name="BottomPanel" Grid.Row="2" Background="#FBFCFE" IsVisible="{Binding BottomVisible}">
+            <TabControl Margin="10,4">
+              <TabItem Header="Logs">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding Logs}" Margin="8">
+                    <ItemsControl.ItemTemplate><DataTemplate><SelectableTextBlock Text="{Binding}" FontFamily="Consolas, monospace" /></DataTemplate></ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </TabItem>
+              <TabItem Header="Tests"><TextBlock Margin="14" Text="Not integrated. No test results have been collected by this GUI." TextWrapping="Wrap" /></TabItem>
+              <TabItem Header="Build Output"><TextBlock Margin="14" Text="Not integrated. No build has been performed or reported by this GUI." TextWrapping="Wrap" /></TabItem>
+              <TabItem Header="Terminal (command output / no PTY)">
+                <Grid RowDefinitions="Auto,*" Margin="8" DataContext="{Binding $parent[Window].Runner}">
+                  <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+                    <TextBox Name="CommandBox" Text="{Binding Command, Mode=TwoWay}" Watermark="Explicit user command; runs in the runtime project directory" />
+                    <Button Name="RunCommandButton" Grid.Column="1" Content="Run" Click="RunCommandClicked" Margin="8,0" />
+                    <Button Grid.Column="2" Content="Stop" Click="StopCommandClicked" IsEnabled="{Binding IsRunning}" />
+                  </Grid>
+                  <TextBox Grid.Row="1" Text="{Binding Output}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                           FontFamily="Consolas, monospace" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </Grid>
+              </TabItem>
+            </TabControl>
+          </Border>
+        </Grid>
+      </ScrollViewer>
+      <Border Grid.Row="3" Background="#EAF0F7" Padding="12,7">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Name="NoticeText" Text="{Binding Notice}" Classes="caption" TextWrapping="Wrap" />
+          <Button Grid.Column="1" Content="Output panel" Command="{Binding ToggleBottomCommand}" Padding="8,3" Margin="8,0,0,0" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

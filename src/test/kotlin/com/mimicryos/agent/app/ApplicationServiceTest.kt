@@ -97,6 +97,61 @@ class ApplicationServiceTest {
     }
 
     @Test
+    fun `permission snapshot exposes waiting state and explicit approval resumes the task`() = runBlocking {
+        val dir = Files.createTempDirectory("mimicry-app-permission").toFile()
+        val config = AppConfig(projectDir = dir.path, providerId = "anthropic", apiKey = "test-key", interactivePermissions = true)
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val service = MimicryApplicationService(AppFactory.create(config), config, requestExecutor = { _, _ ->
+            val body = if (calls.getAndIncrement() == 0) """
+                {"role":"assistant","content":[{"type":"tool_use","id":"write-permission","name":"Write","input":{"file_path":"approved.txt","content":"ok"}}],"stop_reason":"tool_use"}
+            """ else answerBody
+            APIResponse(200, emptyMap(), body)
+        })
+        try {
+            val task = service.submit(TaskRequest("write a file"))
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (service.snapshot().pendingPermissions.isEmpty()) delay(20)
+            }
+            val snapshot = service.snapshot()
+            assertEquals(TaskRunStatus.WAITING_PERMISSION, service.task(task.id)?.status)
+            assertTrue(!File(dir, "approved.txt").exists())
+            val request = snapshot.pendingPermissions.single()
+            assertTrue(service.respondToPermission(request.id, true, null))
+            assertTrue(!service.respondToPermission(request.id, true, null))
+            val completed = service.awaitTask(task.id, 20_000)
+            assertEquals(TaskRunStatus.COMPLETED, completed?.status)
+            assertEquals("ok", File(dir, "approved.txt").readText())
+            val transcript = service.sessionTranscript(task.sessionId)!!
+            assertTrue(transcript.messages.any { it.toolName == "Write" && it.role == "tool_call" })
+            assertTrue(transcript.messages.any { it.toolUseId == "write-permission" && it.role == "tool" })
+        } finally {
+            service.shutdown()
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `new sessions persist and path traversal ids are rejected`() = runBlocking {
+        val dir = Files.createTempDirectory("mimicry-app-new-session").toFile()
+        val service = createService(dir) { _, _ -> APIResponse(200, emptyMap(), answerBody) }
+        try {
+            val session = service.createSession()
+            assertTrue(File(dir, ".mimicry/sessions/${session.id}.json").exists())
+            assertEquals(0, service.sessionTranscript(session.id)?.messages?.size)
+            assertEquals(null, service.sessionTranscript("../../outside"))
+            assertEquals(null, service.resumeSession("../../outside"))
+            assertTrue(runCatching { service.submit(TaskRequest("hi", sessionId = "../../outside")) }.isFailure)
+            val task = service.submit(TaskRequest("new session task"))
+            assertEquals(session.id, task.sessionId)
+            service.awaitTask(task.id, 20_000)
+            assertTrue(service.sessionTranscript(session.id)!!.messages.any { it.text == "Fake answer" })
+        } finally {
+            service.shutdown()
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `rejects an unknown provider instead of silently falling back`() = runBlocking {
         val dir = Files.createTempDirectory("mimicry-app-provider").toFile()
         val service = createService(dir) { _, _ -> APIResponse(200, emptyMap(), answerBody) }

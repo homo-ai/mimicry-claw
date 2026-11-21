@@ -64,6 +64,16 @@ class RuntimeServerTest {
             assertEquals("Served answer", finished.result)
 
             assertTrue(client.listSessions().any { it.id == task.sessionId })
+            val transcript = client.sessionTranscript(task.sessionId)
+            assertNotNull(transcript)
+            assertTrue(transcript.messages.any { it.role == "user" && it.text == "hello over http" })
+            assertTrue(transcript.messages.any { it.role == "assistant" && it.text == "Served answer" })
+            assertEquals(transcript.messages.size, transcript.messages.map { it.id }.distinct().size)
+            assertEquals(null, client.sessionTranscript("nonexistent"))
+            val newSession = client.createSession()
+            assertEquals(0, newSession.messageCount)
+            assertTrue(client.listSessions().any { it.id == newSession.id })
+            assertTrue(client.sessionTranscript(newSession.id)!!.messages.isEmpty())
             assertTrue(client.eventHistory().isNotEmpty())
             assertEquals("claude-3-5-sonnet-20241022", client.runtimeConfig().model)
         } finally {

@@ -176,6 +176,16 @@ class RuntimeServer(
 
                 path == "/v1/sessions" && method == "GET" -> respond(exchange, 200, application.listSessions())
 
+                path == "/v1/sessions" && method == "POST" ->
+                    respond(exchange, 201, runBlocking { application.createSession() })
+
+                path.startsWith("/v1/sessions/") && path.endsWith("/messages") && method == "GET" -> {
+                    val sessionId = path.removePrefix("/v1/sessions/").removeSuffix("/messages")
+                    val transcript = application.sessionTranscript(sessionId)
+                    if (transcript == null) respond(exchange, 404, ErrorResponse("Session not found"))
+                    else respond(exchange, 200, transcript)
+                }
+
                 path.startsWith("/v1/sessions/") && path.endsWith("/resume") && method == "POST" -> {
                     val sessionId = path.removePrefix("/v1/sessions/").removeSuffix("/resume")
                     val session = runBlocking { application.resumeSession(sessionId) }
@@ -273,6 +283,7 @@ class RuntimeServer(
             is RuntimeConfig -> json.encodeToString(RuntimeConfig.serializer(), value)
             is TaskInfo -> json.encodeToString(TaskInfo.serializer(), value)
             is SessionSummary -> json.encodeToString(SessionSummary.serializer(), value)
+            is SessionTranscript -> json.encodeToString(SessionTranscript.serializer(), value)
             is EventEnvelope -> json.encodeToString(EventEnvelope.serializer(), value)
             is List<*> -> {
                 if (value.isEmpty()) {

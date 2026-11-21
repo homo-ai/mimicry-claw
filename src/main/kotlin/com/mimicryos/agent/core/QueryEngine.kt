@@ -117,7 +117,7 @@ class QueryEngine(val config: QueryEngineConfig) {
         when (permissionResult) {
             is PermissionResult.Allow -> {
                 val summary = toolSummary(typedTool, typedInput)
-                emit(AgentEvent.ToolStarted(config.eventTaskId ?: "", toolCall.id, toolCall.name, summary))
+                emit(AgentEvent.ToolStarted(config.eventTaskId ?: "", toolCall.id, toolCall.name, summary, toolCall.input))
                 try {
                     val result = typedTool.call(typedInput, toolUseContext, canUseTool, assistantMessage)
                     val block = typedTool.mapToolResultToToolResultBlockParam(result.data, toolCall.id)

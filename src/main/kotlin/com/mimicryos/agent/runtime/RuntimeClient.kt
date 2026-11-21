@@ -79,6 +79,14 @@ class RuntimeClient(val info: RuntimeInfo) {
 
     suspend fun listSessions(): List<SessionSummary> = decode(send("GET", "/v1/sessions"))
 
+    suspend fun createSession(): SessionSummary = decode(send("POST", "/v1/sessions"))
+
+    suspend fun sessionTranscript(sessionId: String): SessionTranscript? {
+        val response = send("GET", "/v1/sessions/$sessionId/messages")
+        if (response.statusCode() == 404) return null
+        return decode(response)
+    }
+
     suspend fun resumeSession(sessionId: String): SessionSummary? {
         val response = send("POST", "/v1/sessions/$sessionId/resume")
         if (response.statusCode() == 404) return null

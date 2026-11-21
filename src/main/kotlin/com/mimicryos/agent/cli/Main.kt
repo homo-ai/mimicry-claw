@@ -537,17 +537,18 @@ private fun runTools(args: List<String>): Int {
 }
 
 private fun runGui(args: List<String>): Int {
-    if (args.contains("--help") || args.contains("-h")) {
-        println("Usage: mimicry gui")
-        println("The Avalonia GUI is Stage B and is not part of this build yet.")
+    val parsed = parseArgs(args)
+    if (parsed.flags.contains("help")) {
+        println("Usage: mimicry gui [--cwd DIR] [--session ID] [common options]")
+        println("Attaches to an existing runtime, or starts an independent runtime if none exists.")
+        println("Closing/quitting the GUI does not stop the runtime. Use the explicit Shutdown Runtime action for that.")
+        println("Requires a complete platform ZIP containing gui/Mimicry.Gui (or MIMICRY_GUI_PATH).")
         return 0
     }
-    System.err.println("The Avalonia GUI frontend is Stage B and is not included in this build.")
-    System.err.println("The shared runtime is available now:")
-    System.err.println("  1. mimicry serve")
-    System.err.println("  2. read ~/.mimicry/runtime.json for the endpoint and bearer token")
-    System.err.println("  3. GET /v1/snapshot and GET /v1/events (SSE) for live state")
-    return 1
+    val runtimeArgs = parsed.options.filterKeys { it != "session" && it in VALUE_OPTIONS }
+        .flatMap { (key, value) -> listOf("--$key", value) } +
+        parsed.flags.filter { it in setOf("verbose", "no-interactive-permissions") }.map { "--$it" }
+    return runBlocking { com.mimicryos.agent.runtime.GuiLauncher.launch(runtimeArgs, parsed.options["session"]) }
 }
 
 private fun printHelp() {
@@ -564,7 +565,7 @@ private fun printHelp() {
           mimicry resume <id> [prompt]        Resume a session, optionally run a prompt
           mimicry providers [--json]          List providers and credential status
           mimicry tools [--json]              List tools (implemented vs stub)
-          mimicry gui                         GUI status (Stage B)
+          mimicry gui [options]               Open the Avalonia desktop frontend
 
         Common options:
           --cwd DIR              Working directory (default: current directory)
