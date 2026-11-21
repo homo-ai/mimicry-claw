@@ -62,9 +62,10 @@ class TuiApp(
     private data class Entry(val role: String, var text: String, var streaming: Boolean = false)
 
     fun run(): Int {
-        if (initialSessionId != null) {
+        val sessionToResume = initialSessionId
+        if (sessionToResume != null) {
             runCatching {
-                kotlinx.coroutines.runBlocking { runtime.resumeSession(initialSessionId) }
+                kotlinx.coroutines.runBlocking { runtime.resumeSession(sessionToResume) }
             }.onSuccess { session ->
                 if (session != null) {
                     activeSessionId = session.id

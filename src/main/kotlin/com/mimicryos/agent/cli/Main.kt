@@ -1,6 +1,8 @@
 package com.mimicryos.agent.cli
 
 import com.mimicryos.agent.app.*
+import com.mimicryos.agent.core.PromptOptions
+import com.mimicryos.agent.core.ToolPermissionContext
 import com.mimicryos.agent.events.AgentEvent
 import com.mimicryos.agent.events.EventEnvelope
 import com.mimicryos.agent.provider.ProviderCatalog
