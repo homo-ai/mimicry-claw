@@ -95,7 +95,19 @@ object BashTool : Tool<BashInput, BashOutput> {
         }
     }
     override suspend fun description(input: BashInput, options: DescriptionOptions): String = "Execute a bash command"
-    override fun mapToolResultToToolResultBlockParam(content: BashOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.stdout)))
+    override fun mapToolResultToToolResultBlockParam(content: BashOutput, toolUseID: String): ToolResultBlockParam {
+        val failed = content.interrupted || content.exitCode != 0
+        val text = buildString {
+            if (content.stdout.isNotEmpty()) append(content.stdout)
+            if (content.stderr.isNotEmpty()) {
+                if (isNotEmpty()) append('\n')
+                append(content.stderr)
+            }
+            if (isEmpty()) append(if (failed) "Command failed with exit code ${content.exitCode}" else "Command produced no output")
+            if (failed && !content.interrupted) append("\n[exit code ${content.exitCode}]")
+        }
+        return ToolResultBlockParam(listOf(ResultContent.Text(text)), failed)
+    }
     override fun prompt(options: PromptOptions): String = "Execute shell commands"
     override fun userFacingName(input: BashInput): String = "Bash"
     override fun toAutoClassifierInput(input: BashInput): Any = input.command
@@ -183,7 +195,11 @@ object FileWriteTool : Tool<FileWriteInput, FileWriteOutput> {
         }
     }
     override suspend fun description(input: FileWriteInput, options: DescriptionOptions): String = "Write a file"
-    override fun mapToolResultToToolResultBlockParam(content: FileWriteOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text("File written")))
+    override fun mapToolResultToToolResultBlockParam(content: FileWriteOutput, toolUseID: String): ToolResultBlockParam =
+        ToolResultBlockParam(
+            listOf(ResultContent.Text(if (content.success) "File written" else "Failed to write file")),
+            isError = !content.success,
+        )
     override fun prompt(options: PromptOptions): String = "Write files to the filesystem"
     override fun userFacingName(input: FileWriteInput): String = "Write"
     override fun toAutoClassifierInput(input: FileWriteInput): Any = "${input.file_path}: new content"
@@ -236,7 +252,14 @@ object FileEditTool : Tool<FileEditInput, FileEditOutput> {
         }
     }
     override suspend fun description(input: FileEditInput, options: DescriptionOptions): String = "Edit a file"
-    override fun mapToolResultToToolResultBlockParam(content: FileEditOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text("File edited")))
+    override fun mapToolResultToToolResultBlockParam(content: FileEditOutput, toolUseID: String): ToolResultBlockParam {
+        val text = if (content.success) {
+            content.diffs.joinToString("\n").ifBlank { "File edited" }
+        } else {
+            content.diffs.joinToString("\n").ifBlank { "Failed to edit file" }
+        }
+        return ToolResultBlockParam(listOf(ResultContent.Text(text)), isError = !content.success)
+    }
     override fun prompt(options: PromptOptions): String = "Edit files"
     override fun userFacingName(input: FileEditInput): String = "Edit"
     override fun toAutoClassifierInput(input: FileEditInput): Any = "${input.file_path}: edit"
