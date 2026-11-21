@@ -18,7 +18,11 @@ class ToolRegistryTest {
 
         val enabled = registry.getEnabled()
         assertEquals(
-            setOf("Bash", "Read", "Write", "Edit", "Glob", "Grep"),
+            setOf(
+                "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+                "TodoWrite", "TaskCreate", "TaskGet", "TaskUpdate", "TaskList",
+                "NotebookEdit", "ToolSearch", "ListMcpResources", "ReadMcpResource", "Brief",
+            ),
             enabled.map { it.name }.toSet(),
         )
         assertTrue(enabled.all { it.isImplemented })
@@ -49,6 +53,13 @@ class ToolRegistryTest {
         assertDecodes("Edit", mapOf("file_path" to "a.txt", "old_string" to "a", "new_string" to "b"), "a.txt")
         assertDecodes("Glob", mapOf("pattern" to "**/*.kt"), "**/*.kt")
         assertDecodes("Grep", mapOf("pattern" to "TODO"), "TODO")
+        assertDecodes("TaskCreate", mapOf("subject" to "Ship it"), "Ship it")
+        assertDecodes("TaskGet", mapOf("task_id" to "T-ABC123"), "T-ABC123")
+        assertDecodes("TaskList", mapOf("filter" to "active"), "active")
+        assertDecodes("ToolSearch", mapOf("query" to "notebook"), "notebook")
+        assertDecodes("ReadMcpResource", mapOf("uri" to "file:///docs"), "file:///docs")
+        assertDecodes("ListMcpResources", mapOf("server_name" to "docs"), "docs")
+        assertDecodes("Brief", mapOf("content" to "summary"), "summary")
     }
 
     @Test

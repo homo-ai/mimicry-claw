@@ -1,140 +1,92 @@
 # Mimicry Claw
 
-Multi-Model Software Engineering Agent — a Kotlin/JVM implementation of an AI Coding Agent.
+Multi-model software engineering agent with one shared Kotlin/JVM runtime and three frontends: CLI, TUI and Avalonia GUI.
 
-## Overview
+## Current status
 
-Mimicry Claw is an independent software engineering agent tool within the Mimicry ecosystem. It is built by migrating and refactoring a mature AI Coding Agent implementation to Kotlin/JVM, then extending it with multi-model, multi-provider, and multi-protocol support.
+Implemented and verified in CI:
 
-**This is not** an API client. It is a full agent runtime with tool calling, session management, skills, subagents, MCP integration, and permission control.
+- Agent loop with real tool calls, permissions, interruption and usage tracking.
+- Providers/protocols: Anthropic, OpenAI, Google, DeepSeek, Kimi, ZCode, MiMo; Anthropic Messages, OpenAI Chat Completions and Gemini parsing.
+- Session JSON persistence, resume and transcript API.
+- Local Runtime: loopback-only HTTP + SSE, per-process bearer token.
+- CLI: `tui`, `exec`, `serve`, `status`, `sessions`, `resume`, `providers`, `tools`, `gui`.
+- TUI: Normal Mode and Full Screen Mode.
+- GUI: .NET 8 + Avalonia 11 MVVM desktop client, self-contained packages for six targets.
+- 16 implemented tools: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `TodoWrite`, `TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`, `NotebookEdit`, `ToolSearch`, `ListMcpResources`, `ReadMcpResource`, `Brief`.
+- Task/todo state persists per project in `.mimicry/tasks.json`.
+- 13 tools remain honest stubs and are never advertised to the model.
 
-## Features
+Not yet integrated:
 
-- **Agent Loop** — Full conversational agent with tool calling and iterative execution
-- **Multi-Provider** — Support for Anthropic, OpenAI, Google, and custom providers
-- **Multi-Protocol** — Anthropic Messages API, OpenAI Chat Completions, Google Gemini, and custom HTTP
-- **Tool System** — 29 built-in tools (Bash, File Read/Write/Edit, Glob, Grep, Agent, Skills, etc.)
-- **Tool Registry** — Pluggable tool registration with permission-based filtering
-- **Skills System** — Markdown-based skill discovery, loading, and execution
-- **Subagents** — Multi-agent coordination with different model support
-- **MCP Integration** — Model Context Protocol for external tools
-- **Plan Mode** — Planning and approval workflow for complex tasks
-- **Permission System** — Deterministic permission control with allow/deny/ask modes
-- **Session Management** — Persistent session storage and recovery
-- **Context Management** — Token tracking and compaction
-- **Hooks** — Lifecycle hooks for tool use, sessions, compaction, and more
-- **CLI** — Interactive REPL and print modes with Clikt + Mordant
+- `Agent`, `TaskOutput`, `TaskStop`, `Skill`, `EnterPlanMode`, `ExitPlanMode`, `WebFetch`, `WebSearch`, `AskUserQuestion`, `LSP`, `Config`, `EnterWorktree`, `ExitWorktree`.
+- Live MCP connections, real subagent scheduling, Skills content, DSH plugins.
+- GUI Tests/Build panels and PTY terminal. These are shown as unintegrated rather than faked.
+- Wayland/Hyprland native window semantics and ARM64 desktop runtime require device validation.
 
-## Architecture
+See [docs/architecture.md](docs/architecture.md) for exact boundaries and protocol details.
 
+## Layout
+
+```text
+src/main/kotlin/com/mimicryos/agent/
+├── core/       QueryEngine, Tool, Message, Context, AppState
+├── app/        ApplicationService, task queue, permissions, snapshots
+├── runtime/    HTTP + SSE server/client, runtime discovery, GUI launcher
+├── tools/      ToolRegistry and tool implementations
+├── provider/   provider registry and settings
+├── protocol/   Anthropic, OpenAI and Gemini parsers
+├── session/    JSON session persistence
+├── permission/ allow/deny/ask rules
+├── plan/       plan state
+├── cli/        command dispatcher
+└── tui/        Normal and Full Screen terminal UI
+
+gui/
+├── Mimicry.Gui/       Avalonia MVVM frontend
+└── Mimicry.Gui.Tests/ protocol, reducer and headless window tests
 ```
-mimicry-claw/
-├── core/           # Agent core: QueryEngine, Tool, Message, AppState, Context
-├── provider/       # Provider interface, ModelRegistry, ModelRouter
-├── protocol/       # Anthropic, OpenAI, Gemini protocol implementations
-├── tools/          # ToolRegistry with 29 built-in tools
-├── permission/     # Permission system (allow/deny/ask)
-├── hooks/          # Lifecycle hook manager
-├── skills/         # Skill discovery, loading, execution
-├── session/        # Session persistence
-├── context/        # Context window management and compaction
-├── subagent/       # Subagent spawning and coordination
-├── mcp/            # MCP server integration
-├── plan/           # Plan mode management
-├── cli/            # CLI entry point (Clikt + Mordant)
-└── util/           # Utilities
-```
 
-## Technology Stack
+## Build and verify
 
-| Component | Technology |
-|-----------|-----------|
-| Language | Kotlin 2.1.20 |
-| JVM | JDK 21 |
-| Build | Gradle 8.x + Kotlin DSL |
-| Coroutines | kotlinx-coroutines 1.9.0 |
-| HTTP | Ktor 3.0 |
-| Serialization | kotlinx-serialization 1.7.1 |
-| CLI | Clikt 5.0.0 |
-| Terminal | Mordant 2.4.0 |
-| Logging | kotlinx-logging + SLF4J + Logback |
+Local compilation is intentionally skipped to save disk space. GitHub Actions performs all verification:
 
-## Requirements
-
-- **JDK 21** or later
-- **Gradle 8.x** (or use the Gradle wrapper)
-- **Kotlin 2.1.20**
-
-## Build
-
-```bash
-./gradlew build
+```text
+build-jar    Kotlin compile + tests + fat JAR smoke tests
+build-gui    Avalonia tests on Linux, macOS and Windows
+             plus live tests against the real Kotlin runtime
+publish-gui  self-contained .NET publish for six RIDs
+package      JAR + GUI packaged into six platform ZIPs
+release      desktop-preview-<sha> prerelease, never overwrites v1.0.0
 ```
 
 ## Run
 
+Download a platform ZIP from Releases, or build locally with JDK 21:
+
 ```bash
-# Interactive REPL mode
-./gradlew run
-
-# One-shot prompt
-./gradlew run -- "your prompt here"
-
-# With specific model and provider
-./gradlew run -- --model gpt-4o --provider openai --api-key YOUR_KEY
+./run.sh tui
+./run.sh exec --provider anthropic "Explain this repository"
+./run.sh serve
+./run.sh status --json
+./run.sh gui
 ```
+
+`run.bat` is the Windows equivalent.
+
+GUI lifecycle is independent from the runtime: closing the GUI leaves tasks running. Use **File → Shutdown Runtime** to stop the runtime explicitly.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in your API keys:
+Set the key for the chosen provider before running:
 
 ```bash
-cp .env.example .env
+export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENAI_API_KEY="sk-..."
 ```
 
-Configuration is also available via CLI flags:
-
-| Flag | Description |
-|------|-------------|
-| `--model` | Model to use |
-| `--provider` | Provider (anthropic, openai, google) |
-| `--api-key` | API key for the provider |
-| `--permissions` | Permission mode (default, bypass, auto, plan) |
-| `--max-turns` | Maximum turns per session |
-| `--cwd` | Working directory |
-
-## Current Status
-
-This is an early-stage implementation. The agent core and tool system are functional skeletons with full type definitions and architecture. Some tools are fully implemented; others are stubs awaiting implementation.
-
-**Implemented:**
-- Agent core (QueryEngine, Tool, Message types, AppState)
-- Multi-provider architecture (Anthropic, OpenAI, Google)
-- Multi-protocol support (Anthropic Messages, OpenAI Chat, Gemini)
-- Tool registry with 29 tool definitions
-- Permission system
-- Hook system
-- Skill manager
-- Subagent manager
-- MCP manager
-- Plan mode manager
-- Session manager
-- Context manager
-- CLI with Clikt
-
-**Not yet implemented:**
-- Full tool implementations (current tools are stubs)
-- Actual HTTP request execution
-- Test suite
-- DSH plugin integration
-- Skills content (Markdown files)
-- Design workflows
+Common CLI options include `--cwd`, `--provider`, `--model`, `--api-key`, `--base-url`, `--permissions`, `--max-turns`, `--session` and `--json`.
 
 ## License
 
-This project is for research and educational purposes. This project is an independent implementation.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
-# trigger
+Research and educational use. Independent implementation.

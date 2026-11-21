@@ -2,7 +2,17 @@ package com.mimicryos.agent.tools
 
 import com.mimicryos.agent.core.*
 import com.mimicryos.agent.provider.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import java.util.concurrent.ConcurrentHashMap
+
+private val toolJson = Json { ignoreUnknownKeys = true }
 
 class ToolRegistry {
     private val tools = ConcurrentHashMap<String, Tool<*, *>>()
@@ -410,12 +420,46 @@ object TaskStopTool : Tool<TaskStopInput, TaskStopOutput> {
 object TodoWriteTool : Tool<TodoWriteInput, TodoWriteOutput> {
     override val name = "TodoWrite"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: TodoWriteInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TodoWriteOutput> = ToolResult(TodoWriteOutput(true))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "todos" to mapOf(
+                "type" to "array",
+                "description" to "Complete todo list to store for this project",
+                "items" to mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "content" to mapOf("type" to "string"),
+                        "status" to mapOf("type" to "string", "enum" to listOf("pending", "in_progress", "completed", "cancelled")),
+                        "activeForm" to mapOf("type" to "string"),
+                    ),
+                ),
+            ),
+        ),
+        required = listOf("todos"),
+    )
+
+    override fun parseInput(input: Map<String, String>): TodoWriteInput = TodoWriteInput(
+        toolJson.decodeFromString(input["todos"] ?: error("Missing required field: todos")),
+    )
+
+    override suspend fun call(args: TodoWriteInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TodoWriteOutput> = try {
+        TaskStores.forContext(context).replaceTodos(args.todos)
+        ToolResult(TodoWriteOutput(true, args.todos.size))
+    } catch (e: Exception) {
+        ToolResult(TodoWriteOutput(false, error = e.message ?: "Failed to write todos"))
+    }
+
     override suspend fun description(input: TodoWriteInput, options: DescriptionOptions): String = "Update todo list"
-    override fun mapToolResultToToolResultBlockParam(content: TodoWriteOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(emptyList())
+    override fun mapToolResultToToolResultBlockParam(content: TodoWriteOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.error ?: "Stored ${content.count} todo(s)")),
+        isError = !content.success,
+    )
     override fun prompt(options: PromptOptions): String = "Track task progress with todos"
     override fun userFacingName(input: TodoWriteInput): String = "TodoWrite"
-    override fun toAutoClassifierInput(input: TodoWriteInput): Any = ""
+    override fun getToolUseSummary(input: TodoWriteInput): String = "Write ${input.todos.size} todos"
+    override fun toAutoClassifierInput(input: TodoWriteInput): Any = input.todos.map { it.content }
+    override fun isConcurrencySafe(input: TodoWriteInput): Boolean = false
 }
 
 object SkillTool : Tool<SkillInput, SkillOutput> {
@@ -490,20 +534,91 @@ object AskUserQuestionTool : Tool<AskUserQuestionInput, AskUserQuestionOutput> {
 object BriefTool : Tool<BriefInput, BriefOutput> {
     override val name = "Brief"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: BriefInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BriefOutput> = ToolResult(BriefOutput(""))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf("content" to mapOf("type" to "string", "description" to "Text to return as a brief response")),
+        required = listOf("content"),
+    )
+    override fun parseInput(input: Map<String, String>) = BriefInput(input["content"] ?: error("Missing required field: content"))
+    override suspend fun call(args: BriefInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<BriefOutput> = ToolResult(BriefOutput(args.content))
     override suspend fun description(input: BriefInput, options: DescriptionOptions): String = "Provide a brief response"
     override fun mapToolResultToToolResultBlockParam(content: BriefOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.content)))
     override fun prompt(options: PromptOptions): String = "Provide brief responses"
     override fun userFacingName(input: BriefInput): String = "Brief"
+    override fun getToolUseSummary(input: BriefInput): String = input.content.take(120)
+    override fun isReadOnly(input: BriefInput): Boolean = true
+    override fun isConcurrencySafe(input: BriefInput): Boolean = true
     override fun toAutoClassifierInput(input: BriefInput): Any = input.content
 }
 
 object NotebookEditTool : Tool<NotebookEditInput, NotebookEditOutput> {
     override val name = "NotebookEdit"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: NotebookEditInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<NotebookEditOutput> = ToolResult(NotebookEditOutput(true))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "notebook_path" to mapOf("type" to "string", "description" to "Path to a .ipynb file"),
+            "cell_id" to mapOf("type" to "string", "description" to "Cell id, or zero-based index; omit to append a cell"),
+            "new_source" to mapOf("type" to "string", "description" to "Replacement cell source"),
+        ),
+        required = listOf("notebook_path", "new_source"),
+    )
+
+    override fun parseInput(input: Map<String, String>) = NotebookEditInput(
+        notebook_path = input["notebook_path"] ?: error("Missing required field: notebook_path"),
+        cell_id = input["cell_id"],
+        new_source = input["new_source"] ?: error("Missing required field: new_source"),
+    )
+
+    override fun getPath(input: NotebookEditInput): String? = input.notebook_path
+    override fun getToolUseSummary(input: NotebookEditInput): String = "${input.notebook_path}${input.cell_id?.let { " cell $it" } ?: " append"}"
+    override fun isDestructive(input: NotebookEditInput): Boolean = true
+
+    override suspend fun call(args: NotebookEditInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<NotebookEditOutput> = try {
+        val file = resolvePath(context, args.notebook_path)
+        if (!file.isFile) throw IllegalArgumentException("Notebook not found: ${args.notebook_path}")
+        val root = toolJson.parseToJsonElement(file.readText()) as? JsonObject
+            ?: throw IllegalArgumentException("Notebook root must be a JSON object")
+        val cells = root["cells"] as? JsonArray
+            ?: throw IllegalArgumentException("Notebook has no 'cells' array")
+        val index = args.cell_id?.let { id ->
+            id.toIntOrNull()?.takeIf { it in cells.indices }
+                ?: cells.indexOfFirst { cell -> cell is JsonObject && (cell["id"] as? JsonPrimitive)?.content == id }
+                    .takeIf { it >= 0 }
+        }
+        val source = JsonArray(args.new_source.lines().map { JsonPrimitive(it) })
+        val updatedCells = if (index == null) {
+            cells + buildJsonObject {
+                put("cell_type", JsonPrimitive("code"))
+                put("metadata", JsonObject(emptyMap()))
+                put("execution_count", JsonNull)
+                put("outputs", JsonArray(emptyList()))
+                put("source", source)
+                args.cell_id?.let { put("id", JsonPrimitive(it)) }
+            }
+        } else {
+            cells.mapIndexed { i, cell ->
+                if (i != index) cell else buildJsonObject {
+                    (cell as? JsonObject)?.forEach { (key, value) -> put(key, value) }
+                    put("source", source)
+                }
+            }
+        }
+        val updated = buildJsonObject {
+            root.forEach { (key, value) -> put(key, value) }
+            put("cells", JsonArray(updatedCells))
+        }
+        file.writeText(updated.toString())
+        ToolResult(NotebookEditOutput(true))
+    } catch (e: Exception) {
+        ToolResult(NotebookEditOutput(false))
+    }
+
     override suspend fun description(input: NotebookEditInput, options: DescriptionOptions): String = "Edit a notebook"
-    override fun mapToolResultToToolResultBlockParam(content: NotebookEditOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text("Notebook edited")))
+    override fun mapToolResultToToolResultBlockParam(content: NotebookEditOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(if (content.success) "Notebook edited" else "Failed to edit notebook")),
+        isError = !content.success,
+    )
     override fun prompt(options: PromptOptions): String = "Edit Jupyter notebooks"
     override fun userFacingName(input: NotebookEditInput): String = "NotebookEdit"
     override fun toAutoClassifierInput(input: NotebookEditInput): Any = input.notebook_path
@@ -534,77 +649,220 @@ object ConfigTool : Tool<ConfigInput, ConfigOutput> {
 object TaskCreateTool : Tool<TaskCreateInput, TaskCreateOutput> {
     override val name = "TaskCreate"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: TaskCreateInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskCreateOutput> = ToolResult(TaskCreateOutput("", emptyList()))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "subject" to mapOf("type" to "string", "description" to "Short task title"),
+            "description" to mapOf("type" to "string"),
+            "activeForm" to mapOf("type" to "string"),
+        ),
+        required = listOf("subject"),
+    )
+    override fun parseInput(input: Map<String, String>) = TaskCreateInput(
+        subject = input["subject"] ?: error("Missing required field: subject"),
+        description = input["description"] ?: "",
+        activeForm = input["activeForm"] ?: input["active_form"] ?: "",
+    )
+    override suspend fun call(args: TaskCreateInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskCreateOutput> = try {
+        val task = TaskStores.forContext(context).createTask(args.subject, args.description, args.activeForm)
+        ToolResult(TaskCreateOutput(task.id, task.todos))
+    } catch (e: Exception) {
+        ToolResult(TaskCreateOutput("", error = e.message ?: "Failed to create task"))
+    }
     override suspend fun description(input: TaskCreateInput, options: DescriptionOptions): String = "Create a task"
-    override fun mapToolResultToToolResultBlockParam(content: TaskCreateOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.task_id)))
+    override fun mapToolResultToToolResultBlockParam(content: TaskCreateOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.error ?: "Created task ${content.task_id}")),
+        isError = content.task_id.isBlank(),
+    )
     override fun prompt(options: PromptOptions): String = "Create tasks"
     override fun userFacingName(input: TaskCreateInput): String = "TaskCreate"
+    override fun getToolUseSummary(input: TaskCreateInput): String = input.subject
     override fun toAutoClassifierInput(input: TaskCreateInput): Any = input.subject
 }
 
 object TaskGetTool : Tool<TaskGetInput, TaskGetOutput> {
     override val name = "TaskGet"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: TaskGetInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskGetOutput> = ToolResult(TaskGetOutput("", "", emptyList()))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf("task_id" to mapOf("type" to "string", "description" to "Task id returned by TaskCreate")),
+        required = listOf("task_id"),
+    )
+    override fun parseInput(input: Map<String, String>) = TaskGetInput(input["task_id"] ?: error("Missing required field: task_id"))
+    override suspend fun call(args: TaskGetInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskGetOutput> {
+        val task = TaskStores.forContext(context).getTask(args.task_id)
+        return if (task == null) ToolResult(TaskGetOutput(args.task_id, "not_found", found = false))
+        else ToolResult(TaskGetOutput(task.id, task.status, task.todos, task.subject, true))
+    }
     override suspend fun description(input: TaskGetInput, options: DescriptionOptions): String = "Get task"
-    override fun mapToolResultToToolResultBlockParam(content: TaskGetOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.status)))
+    override fun mapToolResultToToolResultBlockParam(content: TaskGetOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(buildString {
+            append("${content.task_id}: ${content.status}")
+            if (content.subject.isNotEmpty()) append(" · ${content.subject}")
+            content.todos.forEach { append("\n- [${it.status}] ${it.content}") }
+            content.error?.let { append("\n$it") }
+        })),
+        isError = !content.found,
+    )
     override fun prompt(options: PromptOptions): String = "Get task status"
     override fun userFacingName(input: TaskGetInput): String = "TaskGet"
+    override fun getToolUseSummary(input: TaskGetInput): String = input.task_id
+    override fun isReadOnly(input: TaskGetInput): Boolean = true
+    override fun isConcurrencySafe(input: TaskGetInput): Boolean = true
     override fun toAutoClassifierInput(input: TaskGetInput): Any = input.task_id
 }
 
 object TaskUpdateTool : Tool<TaskUpdateInput, TaskUpdateOutput> {
     override val name = "TaskUpdate"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: TaskUpdateInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskUpdateOutput> = ToolResult(TaskUpdateOutput(true))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf(
+            "task_id" to mapOf("type" to "string"),
+            "status" to mapOf("type" to "string", "enum" to listOf("pending", "in_progress", "completed", "cancelled")),
+            "activeForm" to mapOf("type" to "string"),
+        ),
+        required = listOf("task_id", "status"),
+    )
+    override fun parseInput(input: Map<String, String>) = TaskUpdateInput(
+        task_id = input["task_id"] ?: error("Missing required field: task_id"),
+        status = input["status"] ?: error("Missing required field: status"),
+        activeForm = input["activeForm"] ?: input["active_form"],
+    )
+    override suspend fun call(args: TaskUpdateInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskUpdateOutput> = try {
+        val updated = TaskStores.forContext(context).updateTask(args.task_id, args.status, args.activeForm)
+        ToolResult(
+            if (updated == null) TaskUpdateOutput(false, "Task not found: ${args.task_id}")
+            else TaskUpdateOutput(true, "Task ${updated.id} is ${updated.status}"),
+        )
+    } catch (e: Exception) {
+        ToolResult(TaskUpdateOutput(false, e.message ?: "Failed to update task"))
+    }
     override suspend fun description(input: TaskUpdateInput, options: DescriptionOptions): String = "Update task"
-    override fun mapToolResultToToolResultBlockParam(content: TaskUpdateOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text("Task updated")))
+    override fun mapToolResultToToolResultBlockParam(content: TaskUpdateOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.message)), isError = !content.success,
+    )
     override fun prompt(options: PromptOptions): String = "Update task status"
     override fun userFacingName(input: TaskUpdateInput): String = "TaskUpdate"
+    override fun getToolUseSummary(input: TaskUpdateInput): String = "${input.task_id} → ${input.status}"
     override fun toAutoClassifierInput(input: TaskUpdateInput): Any = "${input.task_id}: ${input.status}"
 }
 
 object TaskListTool : Tool<TaskListInput, TaskListOutput> {
     override val name = "TaskList"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: TaskListInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskListOutput> = ToolResult(TaskListOutput(emptyList()))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf("filter" to mapOf("type" to "string", "description" to "all, active, pending, in_progress, completed or cancelled")),
+        required = listOf("filter"),
+    )
+    override fun parseInput(input: Map<String, String>) = TaskListInput(input["filter"] ?: "all")
+    override suspend fun call(args: TaskListInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<TaskListOutput> {
+        val tasks = TaskStores.forContext(context).listTasks(args.filter).map {
+            "${it.id} · ${it.status} · ${it.subject}" + if (it.activeForm.isNotEmpty()) " · ${it.activeForm}" else ""
+        }
+        return ToolResult(TaskListOutput(tasks))
+    }
     override suspend fun description(input: TaskListInput, options: DescriptionOptions): String = "List tasks"
-    override fun mapToolResultToToolResultBlockParam(content: TaskListOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.tasks.joinToString("\n"))))
+    override fun mapToolResultToToolResultBlockParam(content: TaskListOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.error ?: content.tasks.joinToString("\n").ifBlank { "No tasks" })),
+        isError = content.error != null,
+    )
     override fun prompt(options: PromptOptions): String = "List tasks"
     override fun userFacingName(input: TaskListInput): String = "TaskList"
-    override fun toAutoClassifierInput(input: TaskListInput): Any = ""
+    override fun getToolUseSummary(input: TaskListInput): String = "List ${input.filter} tasks"
+    override fun isReadOnly(input: TaskListInput): Boolean = true
+    override fun isConcurrencySafe(input: TaskListInput): Boolean = true
+    override fun toAutoClassifierInput(input: TaskListInput): Any = input.filter
 }
 
 object ListMcpResourcesTool : Tool<ListMcpResourcesInput, ListMcpResourcesOutput> {
     override val name = "ListMcpResources"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: ListMcpResourcesInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ListMcpResourcesOutput> = ToolResult(ListMcpResourcesOutput(emptyList()))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf("server_name" to mapOf("type" to "string", "description" to "MCP server name, or * for all")),
+        required = listOf("server_name"),
+    )
+    override fun parseInput(input: Map<String, String>) = ListMcpResourcesInput(input["server_name"] ?: "*")
+    override suspend fun call(args: ListMcpResourcesInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ListMcpResourcesOutput> {
+        val resources = context.options.mcpResources
+            .filter { args.server_name.isBlank() || args.server_name == "*" || it.key == args.server_name }
+            .flatMap { (server, list) -> list.map { "$server:${it.uri} · ${it.name}${it.mimeType?.let { mime -> " · $mime" } ?: ""}" } }
+            .sorted()
+        return ToolResult(ListMcpResourcesOutput(resources))
+    }
     override suspend fun description(input: ListMcpResourcesInput, options: DescriptionOptions): String = "List MCP resources"
-    override fun mapToolResultToToolResultBlockParam(content: ListMcpResourcesOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.resources.joinToString("\n"))))
+    override fun mapToolResultToToolResultBlockParam(content: ListMcpResourcesOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.error ?: content.resources.joinToString("\n").ifBlank { "No MCP resources configured" })),
+        isError = content.error != null,
+    )
     override fun prompt(options: PromptOptions): String = "List MCP resources"
     override fun userFacingName(input: ListMcpResourcesInput): String = "ListMcpResources"
+    override fun getToolUseSummary(input: ListMcpResourcesInput): String = input.server_name
+    override fun isReadOnly(input: ListMcpResourcesInput): Boolean = true
+    override fun isConcurrencySafe(input: ListMcpResourcesInput): Boolean = true
     override fun toAutoClassifierInput(input: ListMcpResourcesInput): Any = input.server_name
 }
 
 object ReadMcpResourceTool : Tool<ReadMcpResourceInput, ReadMcpResourceOutput> {
     override val name = "ReadMcpResource"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: ReadMcpResourceInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ReadMcpResourceOutput> = ToolResult(ReadMcpResourceOutput(""))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf("uri" to mapOf("type" to "string", "description" to "Configured MCP resource URI")),
+        required = listOf("uri"),
+    )
+    override fun parseInput(input: Map<String, String>) = ReadMcpResourceInput(input["uri"] ?: error("Missing required field: uri"))
+    override suspend fun call(args: ReadMcpResourceInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ReadMcpResourceOutput> {
+        val match = context.options.mcpResources.values.flatten().firstOrNull {
+            it.uri == args.uri || it.name == args.uri
+        }
+        return when {
+            match == null -> ToolResult(ReadMcpResourceOutput("", false, "MCP resource not configured: ${args.uri}"))
+            match.text == null -> ToolResult(ReadMcpResourceOutput("", false, "MCP resource has no text content: ${args.uri}"))
+            else -> ToolResult(ReadMcpResourceOutput(match.text, true))
+        }
+    }
     override suspend fun description(input: ReadMcpResourceInput, options: DescriptionOptions): String = "Read MCP resource"
-    override fun mapToolResultToToolResultBlockParam(content: ReadMcpResourceOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.content)))
+    override fun mapToolResultToToolResultBlockParam(content: ReadMcpResourceOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.error ?: content.content)), isError = !content.found,
+    )
     override fun prompt(options: PromptOptions): String = "Read MCP resources"
     override fun userFacingName(input: ReadMcpResourceInput): String = "ReadMcpResource"
+    override fun getToolUseSummary(input: ReadMcpResourceInput): String = input.uri
+    override fun isReadOnly(input: ReadMcpResourceInput): Boolean = true
+    override fun isConcurrencySafe(input: ReadMcpResourceInput): Boolean = true
     override fun toAutoClassifierInput(input: ReadMcpResourceInput): Any = input.uri
 }
 
 object ToolSearchTool : Tool<ToolSearchInput, ToolSearchOutput> {
     override val name = "ToolSearch"
     override val inputSchema = object : ToolInputSchema {}
-    override suspend fun call(args: ToolSearchInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ToolSearchOutput> = ToolResult(ToolSearchOutput(emptyList()))
+    override val isImplemented = true
+    override val inputJSONSchema = ToolInputJSONSchema(
+        properties = mapOf("query" to mapOf("type" to "string", "description" to "Tool name or capability text")),
+        required = listOf("query"),
+    )
+    override fun parseInput(input: Map<String, String>) = ToolSearchInput(input["query"] ?: error("Missing required field: query"))
+    override suspend fun call(args: ToolSearchInput, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: Message.Assistant, onProgress: ToolCallProgress<ToolProgressData>?): ToolResult<ToolSearchOutput> {
+        val query = args.query.trim().lowercase()
+        val options = DescriptionOptions(context.options.isNonInteractiveSession, context.options.toolPermissionContext, context.options.tools)
+        val matches = context.options.tools
+            .filter { query.isEmpty() || it.name.lowercase().contains(query) || it.prompt(options).lowercase().contains(query) }
+            .take(20)
+            .map { "${it.name} · ${it.prompt(options)}" }
+        return ToolResult(ToolSearchOutput(matches))
+    }
     override suspend fun description(input: ToolSearchInput, options: DescriptionOptions): String = "Search tools"
-    override fun mapToolResultToToolResultBlockParam(content: ToolSearchOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(listOf(ResultContent.Text(content.tools.joinToString("\n"))))
+    override fun mapToolResultToToolResultBlockParam(content: ToolSearchOutput, toolUseID: String): ToolResultBlockParam = ToolResultBlockParam(
+        listOf(ResultContent.Text(content.tools.joinToString("\n").ifBlank { "No matching tools" })),
+    )
     override fun prompt(options: PromptOptions): String = "Search for tools"
     override fun userFacingName(input: ToolSearchInput): String = "ToolSearch"
+    override fun getToolUseSummary(input: ToolSearchInput): String = input.query
+    override fun isReadOnly(input: ToolSearchInput): Boolean = true
+    override fun isConcurrencySafe(input: ToolSearchInput): Boolean = true
     override fun toAutoClassifierInput(input: ToolSearchInput): Any = input.query
 }
 
@@ -649,7 +907,8 @@ data class TaskOutputOutput(val output: String, val status: String, val messages
 data class TaskStopInput(val task_id: String, val reason: String = "")
 data class TaskStopOutput(val success: Boolean)
 data class TodoWriteInput(val todos: List<TodoItem>)
-data class TodoWriteOutput(val success: Boolean)
+data class TodoWriteOutput(val success: Boolean, val count: Int = 0, val error: String? = null)
+@Serializable
 data class TodoItem(val content: String, val status: String = "pending", val activeForm: String = "")
 data class SkillInput(val skill_name: String, val args: Map<String, String> = emptyMap())
 data class SkillOutput(val content: String, val scripts: List<String> = emptyList())
@@ -673,17 +932,24 @@ data class LSPOutput(val results: List<String>)
 data class ConfigInput(val key: String, val value: String)
 data class ConfigOutput(val key: String, val value: String)
 data class TaskCreateInput(val subject: String, val description: String = "", val activeForm: String = "")
-data class TaskCreateOutput(val task_id: String, val todos: List<TodoItem> = emptyList())
+data class TaskCreateOutput(val task_id: String, val todos: List<TodoItem> = emptyList(), val error: String? = null)
 data class TaskGetInput(val task_id: String)
-data class TaskGetOutput(val task_id: String, val status: String, val todos: List<TodoItem> = emptyList())
+data class TaskGetOutput(
+    val task_id: String,
+    val status: String,
+    val todos: List<TodoItem> = emptyList(),
+    val subject: String = "",
+    val found: Boolean = true,
+    val error: String? = null,
+)
 data class TaskUpdateInput(val task_id: String, val status: String, val activeForm: String? = null)
-data class TaskUpdateOutput(val success: Boolean)
+data class TaskUpdateOutput(val success: Boolean, val message: String = "")
 data class TaskListInput(val filter: String = "all")
-data class TaskListOutput(val tasks: List<String>)
-data class ListMcpResourcesInput(val server_name: String)
-data class ListMcpResourcesOutput(val resources: List<String>)
+data class TaskListOutput(val tasks: List<String>, val error: String? = null)
+data class ListMcpResourcesInput(val server_name: String = "*")
+data class ListMcpResourcesOutput(val resources: List<String>, val error: String? = null)
 data class ReadMcpResourceInput(val uri: String)
-data class ReadMcpResourceOutput(val content: String)
+data class ReadMcpResourceOutput(val content: String, val found: Boolean = true, val error: String? = null)
 data class ToolSearchInput(val query: String)
 data class ToolSearchOutput(val tools: List<String>)
 data class EnterWorktreeInput(val path: String, val branch: String? = null)
