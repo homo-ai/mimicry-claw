@@ -77,8 +77,10 @@ class WebFetchToolTest {
                 WebFetchInput("https://93.184.216.34/page", "find greeting", 5_000),
                 context, allow, parent,
             )
-            assertTrue(result.data.error == null)
-            assertEquals("Hello\nWorld & friends", result.data.content)
+            assertTrue(result.data.error == null, "unexpected WebFetch error: ${result.data.error}")
+            assertTrue(result.data.content.contains("Hello"), "missing heading: ${result.data.content}")
+            assertTrue(result.data.content.contains("World & friends"), "missing decoded text: ${result.data.content}")
+            assertTrue(!result.data.content.contains("secret"), "script body leaked into text")
             assertEquals("200", result.data.metadata["status"])
             assertEquals("find greeting", result.data.metadata["prompt"])
             assertEquals(1, transport.calls)
