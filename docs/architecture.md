@@ -1,155 +1,97 @@
-# Mimicry Claw 进度报告
+# Mimicry Claw 架构与进度
 
-## 项目状态
+## 一、产品结构
 
-**项目**: Mimicry Claw - Kotlin/JVM 多模型软件工程 Agent
-**当前阶段**: 编译验证通过，核心模块已创建
-**源文件**: 30+ 个 Kotlin 文件
-**代码行数**: 4,000+ 行
-**编译状态**: ✅ GitHub Actions 构建通过
-
----
-
-## 一、核心模块迁移映射
-
-### 2.1 Agent Core
-
-| 原始文件 | 原始职责 | Kotlin 实现 | 状态 |
-|----------|----------|-------------|------|
-| src/QueryEngine.ts (46KB) | 查询引擎，会话生命周期管理 | core/QueryEngine.kt | ✅ |
-| src/query.ts (68KB) | 核心Agent循环 | core/QueryEngine.kt (runAgentLoop) | ✅ |
-| src/Task.ts (3KB) | 任务基类 | core/Ids.kt (TaskType) | ✅ |
-| src/Tool.ts (29KB) | 工具基类和接口 | core/Tool.kt | ✅ |
-| src/tools.ts (17KB) | 工具注册表 | tools/ToolRegistry.kt | ✅ |
-| src/commands.ts (25KB) | 命令定义 | cli/Main.kt | ✅ |
-
-### 2.2 多Provider/多Protocol
-
-| 原始文件 | 原始职责 | Kotlin 实现 | 状态 |
-|----------|----------|-------------|------|
-| src/utils/model/providers.ts | Provider定义 | provider/Provider.kt | ✅ |
-| src/services/api/claude.ts | Anthropic API调用 | protocol/AnthropicProtocol.kt | ✅ |
-| (无原始对应) | OpenAI协议 | protocol/AnthropicProtocol.kt (OpenAIChatProtocol) | ✅ |
-| (无原始对应) | Google协议 | protocol/AnthropicProtocol.kt (GeminiProtocol) | ✅ |
-
-### 2.3 会话与上下文
-
-| 原始文件 | 原始职责 | Kotlin 实现 | 状态 |
-|----------|----------|-------------|------|
-| src/bootstrap/state.ts (56KB) | 应用状态 | core/AppState.kt | ✅ |
-| src/context.ts (6KB) | 上下文管理 | context/ContextManager.kt | ✅ |
-| src/history.ts (14KB) | 历史记录 | session/SessionManager.kt | ✅ |
-
-### 2.4 工具系统 (28个工具)
-
-BashTool, FileReadTool, FileWriteTool, FileEditTool, GlobTool, GrepTool, AgentTool, SkillTool, EnterPlanModeTool, ExitPlanModeV2Tool, WebFetchTool, WebSearchTool, AskUserQuestionTool, TodoWriteTool, TaskOutputTool, TaskStopTool, BriefTool, NotebookEditTool, LSPTool, ConfigTool, TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool, ListMcpResourcesTool, ReadMcpResourceTool, ToolSearchTool, EnterWorktreeTool, ExitWorktreeTool
-
-### 2.5 支持系统
-
-| 模块 | Kotlin 实现 | 状态 |
-|------|-------------|------|
-| 权限系统 | permission/PermissionSystem.kt | ✅ |
-| Hook系统 | hooks/HookManager.kt | ✅ |
-| 技能系统 | skills/SkillManager.kt | ✅ |
-| Subagent | subagent/SubagentManager.kt | ✅ |
-| MCP | mcp/MCPManager.kt | ✅ |
-| Plan Mode | plan/PlanModeManager.kt | ✅ |
-| 会话管理 | session/SessionManager.kt | ✅ |
-| 上下文管理 | context/ContextManager.kt | ✅ |
-
----
-
-## 三、项目结构
+CLI、TUI、GUI 是同一套应用的不同交互入口，共用一个 Application Core 与 Agent Runtime。
 
 ```
-mimicry-claw/
-├── build.gradle.kts              # Gradle构建配置
-├── settings.gradle.kts           # Gradle设置
-├── docs/
-│   └── MIGRATION_MAPPING.md      # 本文档
-├── src/main/kotlin/com/mimicryos/agent/
-│   ├── cli/Main.kt               # CLI入口 (Clikt)
-│   ├── core/                     # 核心模块
-│   │   ├── Ids.kt                # ID类型 (AgentId, SessionId, TaskId, ToolUseId)
-│   │   ├── Message.kt            # 消息类型 (20+ message types)
-│   │   ├── Tool.kt               # 工具接口 (Tool, ToolResult, PermissionResult)
-│   │   ├── Context.kt            # 上下文 (ToolUseContext, ToolOptions)
-│   │   ├── AppState.kt           # 应用状态 (AppState + 20+ state types)
-│   │   ├── QueryEngine.kt        # 查询引擎/Agent循环
-│   │   └── Agent.kt              # Agent主类 (MimicryAgent)
-│   ├── provider/                 # Provider/Protocol分离
-│   │   └── Provider.kt           # Provider接口, ModelRegistry, ModelRouter
-│   ├── protocol/                 # 多协议实现
-│   │   └── AnthropicProtocol.kt  # Anthropic/OpenAI/Gemini协议
-│   ├── tools/                    # 工具系统
-│   │   └── ToolRegistry.kt       # 工具注册表 + 29个工具实现
-│   ├── permission/               # 权限系统
-│   │   └── PermissionSystem.kt
-│   ├── hooks/                    # Hook系统
-│   │   └── HookManager.kt
-│   ├── skills/                   # 技能系统
-│   │   └── SkillManager.kt
-│   ├── session/                  # 会话管理
-│   │   └── SessionManager.kt
-│   ├── context/                  # 上下文管理
-│   │   └── ContextManager.kt
-│   ├── subagent/                 # Subagent管理
-│   │   └── SubagentManager.kt
-│   ├── mcp/                      # MCP集成
-│   │   └── MCPManager.kt
-│   ├── plan/                     # Plan Mode
-│   │   └── PlanModeManager.kt
-│   └── util/                     # 工具函数
-└── src/test/kotlin/              # 测试
+Mimicry Claw
+│
+├── Application Core (Kotlin/JVM)      src/main/kotlin/com/mimicryos/agent/
+│   ├── Agent Runtime                  core/QueryEngine.kt（唯一 Agent Loop）
+│   ├── Task / Session / Context       app/, session/, context/
+│   ├── Provider / Protocol            provider/, protocol/
+│   ├── Tool Dispatch                  tools/ToolRegistry.kt
+│   ├── Permission                     permission/, app/PermissionBroker.kt
+│   ├── Event System                   events/AgentEvent.kt, events/EventBus.kt
+│   └── Configuration                  app/AppConfig.kt
+│
+├── Runtime Server                     runtime/RuntimeServer.kt   (127.0.0.1 HTTP + SSE)
+├── Runtime Client                     runtime/RuntimeClient.kt
+├── Frontend Runtime 抽象              runtime/FrontendRuntime.kt (Local / Remote)
+│
+├── CLI Frontend                       cli/Main.kt        (tui/exec/serve/status/sessions/resume/providers/tools)
+├── TUI Frontend                       tui/TuiApp.kt      (Normal Mode / Full Screen Mode)
+└── GUI Frontend                       gui/               (Stage B，尚未开始)
 ```
 
----
+关键约束：
 
-## 四、技术栈
+- Agent Loop 只存在于 `core/QueryEngine.kt`，前端不实现任何模型调用或工具调度。
+- 所有前端通过 `ApplicationService` 观察同一份任务、会话、事件和权限状态。
+- GUI 关闭不会终止 Runtime；重开 GUI 通过 `~/.mimicry/runtime.json` + Bearer token 重连。
+- 运行时只监听回环地址，随机端口，每次启动生成随机 token。
 
-- **语言**: Kotlin 2.1.20
-- **JVM**: JDK 21
-- **构建**: Gradle 8.x + Kotlin DSL
-- **协程**: kotlinx-coroutines 1.9.0
-- **HTTP**: Ktor 3.0
-- **序列化**: kotlinx-serialization 1.7.1
-- **CLI**: Clikt 5.0.0
-- **终端**: Mordant 2.4.0
-- **日志**: kotlinx-logging + SLF4J + Logback
+## 二、通信协议（Runtime HTTP API）
 
----
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 存活检查（无需业务数据） |
+| GET | `/v1/snapshot` | 完整应用快照：会话、任务、Agent、Plan、Provider、工具、待审批权限 |
+| GET | `/v1/events?since=<seq>` | SSE 事件流（含历史回放、keepalive） |
+| GET | `/v1/events/history?since=<seq>` | 事件历史（非流式） |
+| POST | `/v1/tasks` | 提交任务，`?wait=1&timeoutMs=` 可同步等待 |
+| GET | `/v1/tasks/{id}` | 任务状态 |
+| POST | `/v1/tasks/{id}/interrupt` | 中断任务 |
+| POST | `/v1/permissions/{id}` | 审批/拒绝权限请求 |
+| GET | `/v1/sessions` | 会话列表 |
+| POST | `/v1/sessions/{id}/resume` | 恢复会话 |
+| POST | `/v1/model`, `/v1/provider` | 切换模型 / Provider |
+| GET | `/v1/config` | 运行时配置 |
+| POST | `/v1/shutdown` | 关闭 Runtime |
 
-## 五、已完成的工作
+事件模型（`AgentEvent`）覆盖：runtime/session/task/message/text-delta/tool/permission/plan/file/usage/log/error。
+Session 持久化为 JSON（`<project>/.mimicry/sessions/<id>.json`），使用 `kind` 作为多态判别字段；事件流使用 `type`。
 
-1. ✅ Kotlin/JVM 项目初始化（Gradle构建配置）
-2. ✅ Agent Core 迁移（QueryEngine、Tool、Message、AppState）
-3. ✅ 模型接入层迁移与重构（Provider/Protocol分离）
-4. ✅ 多Provider、多Protocol架构（Anthropic/OpenAI/Gemini）
-5. ✅ Tool System（工具注册表 + 29个工具）
-6. ✅ Context 和 Session 管理
-7. ✅ Permission System
-8. ✅ Hooks、Skills、Subagents、MCP、Plan Mode 骨架
-9. ✅ CLI 交互（Clikt + Mordant）
-10. ✅ 编译验证（GitHub Actions 构建通过）
-11. ✅ 实际HTTP请求实现（JDK 21 HttpClient）
-12. ✅ 协议测试体系（14个测试用例，全部通过）
-13. ✅ 核心工具完整实现（Bash/FileRead/FileWrite/FileEdit/Glob/Grep）
+## 三、实现状态（如实）
 
----
+### 已实现并有测试覆盖
 
-## 六、待完成的工作
+- Agent Loop：工具调用 → 权限判定 → 工具执行 → 结果回传 → 下一轮；`maxTurns`、中止、用量统计。
+- 工具：Bash、Read、Write、Edit、Glob、Grep（真实文件/进程操作，失败以 tool error 回传）。
+- Provider：Anthropic、OpenAI、Google、DeepSeek、Kimi、ZCode、MiMo（OpenAI 兼容协议）。
+- 协议：Anthropic Messages、OpenAI Chat Completions、Google Gemini。
+- 会话：JSON 落盘与恢复（`loadMessages` 真实读回）。
+- 应用层：任务队列、会话互斥、权限桥（超时/取消/非交互拒绝）、快照。
+- Runtime：HTTP + SSE 服务端与客户端，Bearer 鉴权。
+- CLI：`tui / exec / serve / status / sessions / resume / providers / tools`。
+- TUI：Normal Mode（行式，SSH/小终端可用）与 Full Screen Mode（备用屏、键盘滚动、y/n 审批、斜杠命令），无法全屏时明确降级并提示。
+- CI：编译、测试、fat JAR 校验（`--help`、`--version`、`tools`、`providers`、`status --json`、`sessions --json`）、6 平台打包、Release 发布。
 
-1. ❌ 六个DSH插件逐一检查与迁移
-2. ❌ Skills仓库整合
-3. ❌ 集成测试
-4. ❌ 完整运行验证（真实API调用 + 多轮工具调用）
-5. ❌ 剩余工具的完整功能实现（非骨架）
+测试：32 个用例通过（Agent Loop 工具往返、拒绝路径、Session 持久化、工具 schema/输入解码、应用层任务生命周期与中断、Runtime HTTP 与鉴权、三协议解析）。
 
----
+### 未实现（不得对外宣称可用）
 
-## 七、下一步计划
+- GUI（Avalonia）尚未开始；`mimicry gui` 只输出诚实提示，不伪造窗口。
+- 23 个工具仍是 stub，`ToolRegistry.getEnabled()` 不把它们发给模型；`mimicry tools` 会标记为 `stub`。
+- Windows/macOS/Linux 原生窗口行为（Close/Minimize/Hide/Restore/Maximize/Fullscreen/Quit）尚无实现，需随 GUI 落地。
+- Skills / DSH 插件集成、MCP 实际连接、Subagent 真实调度、Plan Mode 交互尚未接入运行时。
+- 真实 API 端到端调用需要用户提供 key，CI 中只做离线验证。
 
-1. 检查六个DSH插件源码
-2. 检查Skills仓库
-3. 实现剩余工具的完整功能
-4. 集成验证
+## 四、构建与验证
+
+- 本地不编译（磁盘容量考虑），全部通过 GitHub Actions 验证。
+- 工作流：`.github/workflows/build.yml`
+  - `build-jar`：JDK 21 → compileKotlin → test → fatJar → JAR 冒烟 → 上传产物
+  - `package`：6 个平台 ZIP（矩阵）
+  - `release`：发布 `v1.0.0` 资产（需要 `contents: write`）
+
+## 五、下一步（Stage B）
+
+1. `gui/` 建立 .NET 8 + Avalonia 11 + CommunityToolkit.Mvvm 工程。
+2. 通过 `RuntimeClient` 接入同一 Runtime（HTTP + SSE），不新建 Agent Loop。
+3. macOS 风格自绘标题栏（左上角红黄绿三色按钮），所有平台统一。
+4. 主窗口结构：三色按钮 + 菜单栏 + Toolbar + Sidebar + Main Workspace + Inspector + Bottom Panel。
+5. Tool Activity 使用结构化组件，而不是聊天气泡。
+6. 窗口语义严格区分 Close / Minimize / Hide / Restore / Maximize / Fullscreen / Quit；Wayland/Hyprland 按实际 WM 能力降级，不伪装成功。
+7. GUI 生命周期独立于 Runtime：关闭窗口不终止 Agent，重开可恢复。
