@@ -14,6 +14,8 @@ import com.mimicryos.agent.core.ToolUseContext
 import com.mimicryos.agent.permission.PermissionResult
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
